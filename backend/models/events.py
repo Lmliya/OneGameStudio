@@ -8,10 +8,13 @@ from pydantic import BaseModel, Field
 
 class EventType(str, Enum):
     TASK_CREATED = "task_created"
+    STATE_CHANGED = "state_changed"
     STAGE_STARTED = "stage_started"
     STAGE_COMPLETED = "stage_completed"
     STAGE_FAILED = "stage_failed"
     FIX_REQUESTED = "fix_requested"
+    TASK_COMPLETED = "task_completed"
+    TASK_FAILED = "task_failed"
 
 
 class TraceEvent(BaseModel):

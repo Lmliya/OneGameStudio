@@ -3,9 +3,12 @@
 按 schema 名称返回结构合法的 JSON，让四个员工在没有 API Key 的情况下
 也能被同一套 Vessel 独立执行与自动化测试。
 Mock 不理解需求语义，只保证结构与流程正确。
+
+审查策略：默认第一次审查不通过、第二次通过，用于演示一次完整的修复闭环。
 """
 
 import json
+import re
 
 from backend.providers.base import BaseProvider, ProviderResponse
 
@@ -29,7 +32,7 @@ x.font='14px monospace';x.fillText('Score: '+score,8,18);if(dead)x.fillText('Gam
 setInterval(()=>{step();draw();},120);draw();
 </script></body></html>"""
 
-_MOCK_OUTPUTS: dict[str, dict] = {
+_PRIMARY_OUTPUTS: dict[str, dict] = {
     "prd": {
         "title": "贪吃蛇",
         "genre": "arcade",
@@ -45,17 +48,6 @@ _MOCK_OUTPUTS: dict[str, dict] = {
         "html": _SNAKE_HTML,
         "notes": "单文件 Canvas 2D 实现，无外部依赖",
     },
-    "review": {
-        "score": 82,
-        "passed": True,
-        "issues": [
-            {
-                "severity": "low",
-                "description": "缺少暂停功能",
-                "suggestion": "增加空格键暂停与恢复",
-            }
-        ],
-    },
     "marketing": {
         "tagline": "一条蛇，一块屏幕，无限贪吃",
         "description": "经典贪吃蛇玩法，方向键操作，节奏轻快，适合碎片时间。",
@@ -64,9 +56,32 @@ _MOCK_OUTPUTS: dict[str, dict] = {
     },
 }
 
+_REVIEW_FAIL = {
+    "score": 55,
+    "passed": False,
+    "issues": [
+        {
+            "severity": "high",
+            "description": "缺少计分与游戏结束提示",
+            "suggestion": "在画面左上角显示分数，并在结束时给出重开提示",
+        }
+    ],
+}
+
+_REVIEW_PASS = {"score": 88, "passed": True, "issues": []}
+
+
+def _review_attempt(user: str) -> int:
+    match = re.search(r"审查轮次\s*:\s*(\d+)", user)
+    return int(match.group(1)) if match else 1
+
 
 class MockProvider(BaseProvider):
     default_model = "mock"
+
+    def __init__(self, review_passes_from: int = 2) -> None:
+        # 第 N 次及以后的审查返回通过；默认第 2 次通过
+        self._review_passes_from = review_passes_from
 
     async def complete(
         self,
@@ -76,8 +91,7 @@ class MockProvider(BaseProvider):
         model: str,
         schema: str | None = None,
     ) -> ProviderResponse:
-        key = schema or "prd"
-        payload = _MOCK_OUTPUTS.get(key, _MOCK_OUTPUTS["prd"])
+        payload = self._payload(user, schema)
         text = json.dumps(payload, ensure_ascii=False)
         return ProviderResponse(
             text=text,
@@ -86,3 +100,18 @@ class MockProvider(BaseProvider):
             output_tokens=len(text) // 4,
             cost_usd=0.0,
         )
+
+    def _payload(self, user: str, schema: str | None) -> dict:
+        if schema == "review":
+            attempt = _review_attempt(user)
+            return (
+                dict(_REVIEW_PASS)
+                if attempt >= self._review_passes_from
+                else dict(_REVIEW_FAIL)
+            )
+        if schema == "game":
+            payload = dict(_PRIMARY_OUTPUTS["game"])
+            if "审查意见" in user:
+                payload["notes"] = "已按审查意见补充计分与结束提示"
+            return payload
+        return dict(_PRIMARY_OUTPUTS.get(schema or "prd", _PRIMARY_OUTPUTS["prd"]))

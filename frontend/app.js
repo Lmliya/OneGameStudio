@@ -45,11 +45,11 @@ async function submitRequirement() {
     }
     const data = await response.json();
     resultEl.textContent =
-      `任务已创建\n` +
+      `任务已启动（后台执行）\n` +
       `task_id : ${data.task_id}\n` +
-      `状态    : ${data.status}\n` +
-      `阶段    : ${data.stage}\n\n` +
-      `（阶段 0 仅创建任务目录，尚未启动 AI 员工）`;
+      `状态    : ${data.status}\n\n` +
+      `查询进度：GET /api/tasks/${data.task_id}\n` +
+      `查看产物：GET /api/tasks/${data.task_id}/artifacts`;
   } catch (error) {
     resultEl.textContent = `提交失败：${error.message}`;
   } finally {
