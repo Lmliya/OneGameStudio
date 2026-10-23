@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from onegamestudio.core.llm import BaseLLM
-from onegamestudio.models.events import EventType, TraceEvent, Tracer
-from onegamestudio.models.talent import TalentSpec
+from backend.models.events import EventType, TraceEvent, Tracer
+from backend.models.talent import TalentSpec
+from backend.providers.base import BaseProvider
 
 
 class VesselError(RuntimeError):
@@ -32,7 +32,9 @@ class VesselResult:
 class Vessel:
     """一个可复用的执行容器，同一任务内的多个员工共享它来统计用量。"""
 
-    def __init__(self, llm: BaseLLM, tracer: Tracer, *, budget_usd: float = 1.0) -> None:
+    def __init__(
+        self, llm: BaseProvider, tracer: Tracer, *, budget_usd: float = 1.0
+    ) -> None:
         self._llm = llm
         self._tracer = tracer
         self._budget_usd = budget_usd

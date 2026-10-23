@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from onegamestudio.models.contract import Stage, TaskContract, TaskStatus
+from backend.models.contract import Stage, TaskContract, TaskStatus
 
 
 def test_contract_defaults() -> None:

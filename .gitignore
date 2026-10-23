@@ -2,7 +2,8 @@ __pycache__/
 *.py[cod]
 .venv/
 .env
-data/
+output/*
+!output/.gitkeep
 .pytest_cache/
 .ruff_cache/
 .DS_Store

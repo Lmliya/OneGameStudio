@@ -11,7 +11,7 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
-    # 为 true 时使用离线 MockLLM，不发起任何真实网络请求
+    # 为 true 时使用离线 MockProvider，不发起任何真实网络请求
     mock_mode: bool = True
 
     # 真实模式下的 OpenAI 兼容接口配置
@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     default_model: str = "gpt-4o-mini"
 
     # 任务产物根目录（每个任务一个独立子目录）
-    data_dir: Path = Path("data")
+    output_dir: Path = Path("output")
 
     # 成本预算与自动修复轮次上限
     budget_usd: float = 1.0

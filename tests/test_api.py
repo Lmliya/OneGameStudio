@@ -5,20 +5,28 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from onegamestudio.api.main import app, settings
+from backend.main import app, settings
 
 
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    """把产物目录指向临时目录，避免污染项目 data/。"""
-    monkeypatch.setattr(settings, "data_dir", tmp_path)
+    """把产物目录指向临时目录，避免污染项目 output/。"""
+    monkeypatch.setattr(settings, "output_dir", tmp_path)
     return TestClient(app)
 
 
 def test_health(client: TestClient) -> None:
-    response = client.get("/health")
+    response = client.get("/api/health")
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["mock_mode"] is True
+
+
+def test_frontend_served(client: TestClient) -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "OneGameStudio" in response.text
 
 
 def test_create_task_writes_contract(client: TestClient, tmp_path: Path) -> None:

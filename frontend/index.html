@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OneGameStudio</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>OneGameStudio</h1>
+    <span id="status" class="badge badge-wait">连接中…</span>
+  </header>
+
+  <main class="panel">
+    <label for="requirement">CEO 需求</label>
+    <textarea
+      id="requirement"
+      rows="6"
+      placeholder="例如：做一个能计分的贪吃蛇小游戏"
+    ></textarea>
+    <button id="submit">提交需求</button>
+    <pre id="result" class="result">等待提交…</pre>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
