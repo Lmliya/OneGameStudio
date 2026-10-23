@@ -3,12 +3,18 @@
 from backend.config import Settings
 from backend.providers.base import BaseProvider, ProviderResponse
 from backend.providers.mock import MockProvider
-from backend.providers.openai import OpenAICompatProvider
+from backend.providers.openai import OpenAICompatibleProvider
 
-__all__ = ["BaseProvider", "ProviderResponse", "MockProvider", "build_provider"]
+__all__ = [
+    "BaseProvider",
+    "ProviderResponse",
+    "MockProvider",
+    "OpenAICompatibleProvider",
+    "build_provider",
+]
 
 
 def build_provider(settings: Settings) -> BaseProvider:
     if settings.mock_mode:
         return MockProvider()
-    return OpenAICompatProvider(settings)
+    return OpenAICompatibleProvider(settings)
