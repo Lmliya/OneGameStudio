@@ -63,7 +63,9 @@
     return `
       <div class="talent-item ${
         item.talent_name === selected ? "active" : ""
-      }" data-talent="${escapeHtml(item.talent_name)}">
+      }" data-talent="${escapeHtml(item.talent_name)}" role="button" tabindex="0" aria-pressed="${
+        item.talent_name === selected ? "true" : "false"
+      }" aria-label="查看 ${escapeHtml(item.name)} 员工档案">
         <span class="t-name">${escapeHtml(item.name)} ${badge}</span>
         <span class="t-ver">${escapeHtml(item.role)} · ${escapeHtml(
           item.active_label,
@@ -157,7 +159,9 @@
   function loadDetail(talent) {
     selected = talent;
     listEl.querySelectorAll(".talent-item").forEach((item) => {
-      item.classList.toggle("active", item.dataset.talent === talent);
+      const isActive = item.dataset.talent === talent;
+      item.classList.toggle("active", isActive);
+      item.setAttribute("aria-pressed", isActive ? "true" : "false");
     });
     renderDetail(talent);
   }
@@ -215,6 +219,14 @@
     }
     const item = event.target.closest("[data-talent]");
     if (item) loadDetail(item.dataset.talent);
+  });
+
+  listEl.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const item = event.target.closest("[data-talent]");
+    if (!item || event.target.closest("[data-switch]")) return;
+    event.preventDefault();
+    loadDetail(item.dataset.talent);
   });
 
   const employeeTab =

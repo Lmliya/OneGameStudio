@@ -1,322 +1,236 @@
-// 像素办公室：Canvas 2D 绘制六名原创像素员工、工位与暖色办公室装饰。
-// 员工状态只由后端 agent.status_changed 事件驱动，本文件不含任何计时器模拟进度。
-// 同一时刻最多只有一名员工播放工作动画：由 activeAgent 记录当前焦点。
-// 点击热区与人物绘制共用 AGENTS 坐标，保证“画在哪里就能点在哪里”。
-
+// OneGameStudio 原创 2.5D 等距像素办公室。
+// 世界坐标、投影、绘制与 DOM 热区共用同一数据源；员工状态只来自后端事件。
 const Office = (() => {
   const canvas = document.getElementById("office");
   const ctx = canvas.getContext("2d");
-  const W = canvas.width;
-  const H = canvas.height;
+  const W = 960;
+  const H = 600;
+  const TILE_W = 64;
+  const TILE_H = 32;
+  const HEIGHT = 32;
+  const ORIGIN = { x: 480, y: 184 };
   const FONT = 'ui-monospace, Menlo, "PingFang SC", "Microsoft YaHei", monospace';
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-
-  // 3 列 × 2 行：上排 COO / CREATIVE / DELIVERY，下排 ENGINEER / REVIEWER / MARKETER
-  // x/y 是桌面中心；热区 = 以 (x, y) 为基准的 HIT 矩形
-  const AGENTS = [
-    { id: "coo", talent: "coo", name: "COO", role: "产品经理", color: "#5a9fd4", dark: "#2c6496", hair: "#3b2a20", x: 150, y: 178 },
-    { id: "creative", talent: "creative", name: "CREATIVE", role: "创意总监", color: "#f08a5d", dark: "#b4552e", hair: "#c0392b", x: 440, y: 178 },
-    { id: "delivery", talent: "delivery", name: "DELIVERY", role: "交付总监", color: "#4fb3a9", dark: "#2a7a72", hair: "#2b2b3a", x: 730, y: 178 },
-    { id: "engineer", talent: "engineer", name: "ENGINEER", role: "游戏工程师", color: "#f2b134", dark: "#b97a12", hair: "#5a3720", x: 150, y: 384 },
-    { id: "reviewer", talent: "reviewer", name: "REVIEWER", role: "质量审查官", color: "#6fbf73", dark: "#2f7a3e", hair: "#7a4a24", x: 440, y: 384 },
-    { id: "marketer", talent: "marketer", name: "MARKETER", role: "营销负责人", color: "#b07fd6", dark: "#6a3f92", hair: "#e8c35a", x: 730, y: 384 },
-  ];
-  const HIT = { left: 96, top: 88, width: 192, height: 156 };
-
-  // 头像外观（含不占工位的备用工程师）
-  const LOOKS = Object.fromEntries(AGENTS.map((a) => [a.talent, a]));
-  LOOKS.backup_engineer = { color: "#e07a9a", dark: "#a34766", hair: "#2d6a8a", glasses: true };
-
+  const INK = "#45291a";
   const SKIN = "#f6cfa4";
   const SKIN_SHADE = "#e3ae80";
-  const INK = "#45291a";
-
-  // 员工状态：值只会在 setAgent() 中被后端事件覆盖
-  const state = new Map(
-    AGENTS.map((a) => [a.id, { status: "idle", message: "", speech: "", tag: "" }]),
-  );
-  let activeAgent = null;
-  let hovered = null;
-  let requirement = "";
-  let selectHandler = null;
-
-  const STATUS_TEXT = {
-    idle: "待命",
-    working: "工作中",
-    reviewing: "审查中",
-    fixing: "修复中",
-    completed: "已完成",
-    error: "出错",
-  };
-
-  const STATUS_COLOR = {
-    idle: "#a88a6c",
-    working: "#2c6496",
-    reviewing: "#2f7a3e",
-    fixing: "#b97a12",
-    completed: "#2f7a3e",
-    error: "#9c3a31",
-  };
-
-  const STATUS_FILL = {
-    idle: "#efd39a",
-    working: "#cfe4f5",
-    reviewing: "#d6efcf",
-    fixing: "#fbe3a6",
-    completed: "#d6efcf",
-    error: "#f4cdc6",
-  };
-
   const ACTIVE = new Set(["working", "reviewing", "fixing"]);
   const SPEAKING = new Set(["working", "reviewing", "fixing", "error"]);
 
-  ctx.imageSmoothingEnabled = false;
+  // x/y/z 均为世界坐标；屏幕位置只能由 project() 得出。
+  const AGENTS = [
+    { id: "coo", talent: "coo", name: "COO", role: "产品经理", color: "#5a9fd4", dark: "#2c6496", hair: "#3b2a20", x: 1.8, y: 1.7 },
+    { id: "creative", talent: "creative", name: "CREATIVE", role: "创意总监", color: "#f08a5d", dark: "#b4552e", hair: "#c0392b", x: 4.8, y: 1.7 },
+    { id: "delivery", talent: "delivery", name: "DELIVERY", role: "交付总监", color: "#4fb3a9", dark: "#2a7a72", hair: "#2b2b3a", x: 7.8, y: 1.7 },
+    { id: "engineer", talent: "engineer", name: "ENGINEER", role: "游戏工程师", color: "#f2b134", dark: "#b97a12", hair: "#5a3720", x: 1.8, y: 4.55 },
+    { id: "reviewer", talent: "reviewer", name: "REVIEWER", role: "质量审查官", color: "#6fbf73", dark: "#2f7a3e", hair: "#7a4a24", x: 4.8, y: 4.55 },
+    { id: "marketer", talent: "marketer", name: "MARKETER", role: "营销负责人", color: "#b07fd6", dark: "#6a3f92", hair: "#e8c35a", x: 7.8, y: 4.55 },
+  ];
+  const LOOKS = Object.fromEntries(AGENTS.map((a) => [a.talent, a]));
+  LOOKS.backup_engineer = { color: "#e07a9a", dark: "#a34766", hair: "#2d6a8a", glasses: true };
+  const STATUS_TEXT = { idle: "待命", working: "工作中", reviewing: "思考中", fixing: "修复中", completed: "已完成", error: "出错" };
+  const STATUS_COLOR = { idle: "#a88a6c", working: "#2c6496", reviewing: "#2f7a3e", fixing: "#b97a12", completed: "#2f7a3e", error: "#9c3a31" };
+  const STATUS_FILL = { idle: "#efd39a", working: "#cfe4f5", reviewing: "#d6efcf", fixing: "#fbe3a6", completed: "#d6efcf", error: "#f4cdc6" };
+
+  const state = new Map(AGENTS.map((a) => [a.id, { status: "idle", message: "", speech: "", tag: "", noticeUntil: 0 }]));
+  const positions = new Map(AGENTS.map((a) => [a.id, { x: a.x + 0.2, y: a.y - 0.58 }]));
+  const hotspots = new Map();
+  const camera = { zoom: 1.3, panX: 0, panY: 0 };
+  let activeAgent = null;
+  let hovered = null;
+  let selected = null;
+  let requirement = "";
+  let selectHandler = null;
+  let dirty = true;
+  let staticDirty = true;
+  let dpr = 1;
+  let lastFrame = 0;
+  let dragging = null;
+
+  const bg = document.createElement("canvas");
+  bg.width = W;
+  bg.height = H;
+  const bgCtx = bg.getContext("2d");
+  bgCtx.imageSmoothingEnabled = false;
 
   function px(x, y, w, h, color, c = ctx) {
     c.fillStyle = color;
-    c.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+    c.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
   }
 
-  // 带 3px 深色描边的像素方框
   function box(x, y, w, h, fill, border = INK, c = ctx) {
     px(x, y, w, h, border, c);
     px(x + 2, y + 2, w - 4, h - 4, fill, c);
   }
 
-  // ---------- 静态房间（只绘制一次到离屏画布） ----------
+  function poly(points, fill, c = ctx, stroke = null) {
+    c.beginPath();
+    points.forEach((p, i) => (i ? c.lineTo(Math.round(p.x), Math.round(p.y)) : c.moveTo(Math.round(p.x), Math.round(p.y))));
+    c.closePath();
+    c.fillStyle = fill;
+    c.fill();
+    if (stroke) {
+      c.strokeStyle = stroke;
+      c.lineWidth = Math.max(1, camera.zoom);
+      c.stroke();
+    }
+  }
 
-  function drawWall(c) {
-    // 奶油色条纹墙纸 + 木质踢脚线
-    px(0, 0, W, 100, "#f6e3c0", c);
-    for (let x = 0; x < W; x += 24) px(x, 0, 12, 100, "#f1d9ae", c);
-    px(0, 92, W, 12, "#a8693a", c);
-    px(0, 92, W, 3, "#c98a50", c);
-    px(0, 102, W, 2, "#5a3720", c);
+  function project(x, y, z = 0) {
+    const rx = ORIGIN.x + (x - y) * (TILE_W / 2);
+    const ry = ORIGIN.y + (x + y) * (TILE_H / 2) - z * HEIGHT;
+    return {
+      x: W / 2 + (rx - W / 2) * camera.zoom + camera.panX,
+      y: H / 2 + (ry - H / 2) * camera.zoom + camera.panY,
+    };
+  }
 
-    // 两扇白天的窗户（蓝天 + 白云）
-    [36, 650].forEach((wx) => {
-      box(wx, 14, 132, 62, "#9fd3f0", "#7a4a24", c);
-      px(wx + 3, 60, 126, 13, "#bfe3f6", c);
-      px(wx + 64, 14, 4, 62, "#7a4a24", c);
-      px(wx + 16, 26, 26, 8, "#ffffff", c);
-      px(wx + 22, 22, 14, 4, "#ffffff", c);
-      px(wx + 84, 36, 30, 8, "#ffffff", c);
-      px(wx + 92, 32, 12, 4, "#ffffff", c);
-      px(wx - 4, 74, 140, 6, "#c98a50", c);
-    });
+  function isoBox(c, x, y, z, w, d, h, colors) {
+    const top = [project(x, y, z + h), project(x + w, y, z + h), project(x + w, y + d, z + h), project(x, y + d, z + h)];
+    const front = [project(x, y + d, z), project(x + w, y + d, z), project(x + w, y + d, z + h), project(x, y + d, z + h)];
+    const side = [project(x + w, y, z), project(x + w, y + d, z), project(x + w, y + d, z + h), project(x + w, y, z + h)];
+    poly(front, colors.front, c, colors.edge || INK);
+    poly(side, colors.side, c, colors.edge || INK);
+    poly(top, colors.top, c, colors.edge || INK);
+  }
 
-    // 原创海报：像素手柄
-    box(186, 16, 56, 62, "#fff8e6", "#7a4a24", c);
-    px(196, 38, 36, 18, "#d2655a", c);
-    px(201, 44, 10, 3, "#fff8e6", c);
-    px(204, 41, 3, 9, "#fff8e6", c);
-    px(220, 42, 4, 4, "#f2b134", c);
-    px(226, 48, 4, 4, "#6fbf73", c);
-    px(196, 62, 36, 3, "#c08548", c);
+  function wallRectY(c, x, z, w, h, fill, border = null) {
+    const points = [project(x, 0, z), project(x + w, 0, z), project(x + w, 0, z + h), project(x, 0, z + h)];
+    poly(points, fill, c, border);
+  }
 
-    // 奖杯置物架
-    px(806, 50, 66, 6, "#7a4a24", c);
-    px(814, 30, 14, 14, "#f2b134", c);
-    px(818, 44, 6, 6, "#b97a12", c);
-    px(836, 34, 10, 16, "#5a9fd4", c);
-    px(852, 28, 12, 22, "#6fbf73", c);
-
-    // 挂钟
-    box(600, 20, 36, 36, "#fff8e6", "#7a4a24", c);
-    px(617, 27, 2, 12, INK, c);
-    px(617, 37, 9, 2, INK, c);
+  function wallRectX(c, y, z, d, h, fill, border = null) {
+    const points = [project(0, y, z), project(0, y + d, z), project(0, y + d, z + h), project(0, y, z + h)];
+    poly(points, fill, c, border);
   }
 
   function drawFloor(c) {
-    // 横向木地板，错缝排列
-    for (let row = 0, y = 104; y < H; row++, y += 16) {
-      px(0, y, W, 16, row % 2 ? "#d9a86a" : "#d2a062", c);
-      px(0, y + 15, W, 1, "#b98447", c);
-      const offset = (row % 3) * 46;
-      for (let x = offset; x < W; x += 138) px(x, y, 2, 15, "#b98447", c);
-    }
-    // 墙角阴影
-    px(0, 104, W, 6, "rgba(90,55,32,0.18)", c);
-  }
-
-  function drawRunner(c) {
-    // 两排工位之间的走道地毯
-    box(60, 262, 760, 32, "#d97a5f", "#9c4a34", c);
-    for (let x = 76; x < 810; x += 28) {
-      px(x, 274, 8, 8, "#f2c08a", c);
-    }
-  }
-
-  function drawBookshelf(c) {
-    box(4, 112, 42, 108, "#a8693a", "#5a3720", c);
-    const colors = ["#d2655a", "#f2b134", "#6fbf73", "#5a9fd4", "#b07fd6"];
-    [146, 180, 214].forEach((shelfY, row) => {
-      px(6, shelfY, 38, 4, "#5a3720", c);
-      for (let i = 0; i < 4; i++) {
-        px(9 + i * 9, shelfY - 22 + (i % 2) * 3, 7, 22 - (i % 2) * 3, colors[(row + i) % 5], c);
+    // 地板厚度先画，前缘让房间成为有边界的实体而不是平面背景。
+    isoBox(c, 0, 0, -0.22, 10, 8, 0.22, { top: "#dca464", front: "#8f5530", side: "#70401f", edge: "#5a3720" });
+    for (let x = 0; x < 10; x += 1) {
+      for (let y = 0; y < 8; y += 1) {
+        const fill = (x + y) % 2 ? "#d8a565" : "#e2b474";
+        poly([project(x, y), project(x + 1, y), project(x + 1, y + 1), project(x, y + 1)], fill, c, "#bd874b");
+        if ((x * 3 + y) % 4 === 0) {
+          poly([project(x + 0.15, y + 0.42, 0.005), project(x + 0.65, y + 0.42, 0.005), project(x + 0.65, y + 0.47, 0.005), project(x + 0.15, y + 0.47, 0.005)], "rgba(122,74,36,0.18)", c);
+        }
       }
-    });
-  }
-
-  function drawCooler(c) {
-    px(842, 112, 26, 30, "#9fd3f0", c);
-    px(846, 108, 18, 6, "#cdeaf8", c);
-    box(834, 140, 42, 70, "#eef1f4", "#5a3720", c);
-    px(842, 156, 8, 6, "#5a9fd4", c);
-    px(860, 156, 8, 6, "#d2655a", c);
-  }
-
-  function drawPlant(x, y, c) {
-    px(x + 6, y + 30, 26, 22, "#a8693a", c);
-    px(x + 4, y + 28, 30, 5, "#c98a50", c);
-    px(x + 16, y + 4, 6, 26, "#2f7a3e", c);
-    px(x + 2, y + 8, 14, 10, "#6fbf73", c);
-    px(x + 22, y + 2, 14, 10, "#4f9e57", c);
-    px(x + 8, y - 6, 12, 10, "#6fbf73", c);
-    px(x + 18, y + 16, 12, 8, "#4f9e57", c);
-  }
-
-  function drawArcade(c) {
-    // 走道上的原创小街机（游戏工作室的标志物）
-    const x = 566;
-    const y = 232;
-    box(x, y, 40, 62, "#d2655a", "#5a3720", c);
-    px(x + 6, y + 8, 28, 20, "#2a1d14", c);
-    px(x + 10, y + 12, 6, 4, "#6fbf73", c);
-    px(x + 20, y + 18, 8, 4, "#f2b134", c);
-    px(x + 4, y + 32, 32, 8, "#f6cfa4", c);
-    px(x + 10, y + 34, 4, 4, INK, c);
-    px(x + 24, y + 34, 4, 4, "#5a9fd4", c);
-  }
-
-  function drawCat(c) {
-    // 睡在走道地毯上的猫（静态装饰）
-    const x = 296;
-    const y = 268;
-    px(x, y + 8, 40, 14, "#e8a35c", c);
-    px(x + 4, y + 8, 30, 3, "#f6c38a", c);
-    px(x + 34, y + 2, 16, 16, "#e8a35c", c);
-    px(x + 35, y - 2, 4, 5, "#e8a35c", c);
-    px(x + 45, y - 2, 4, 5, "#e8a35c", c);
-    px(x + 38, y + 8, 3, 2, INK, c);
-    px(x + 44, y + 8, 3, 2, INK, c);
-    px(x - 10, y + 16, 12, 4, "#e8a35c", c);
-    px(x + 10, y + 10, 3, 10, "#c97f3e", c);
-    px(x + 20, y + 10, 3, 10, "#c97f3e", c);
-  }
-
-  function drawSofa(c) {
-    // 底部休息区：沙发 + 茶几
-    box(330, 474, 150, 40, "#5a9fd4", "#2c4f73", c);
-    px(334, 478, 142, 10, "#7fb6e0", c);
-    box(322, 482, 16, 34, "#4a86b8", "#2c4f73", c);
-    box(472, 482, 16, 34, "#4a86b8", "#2c4f73", c);
-    box(540, 486, 64, 22, "#c98a50", "#5a3720", c);
-    px(552, 480, 10, 8, "#fff8e6", c);
-    px(578, 482, 14, 6, "#d2655a", c);
-  }
-
-  const bg = document.createElement("canvas");
-  bg.width = W;
-  bg.height = H;
-  (() => {
-    const c = bg.getContext("2d");
-    c.imageSmoothingEnabled = false;
-    drawWall(c);
-    drawFloor(c);
-    drawRunner(c);
-    drawBookshelf(c);
-    drawCooler(c);
-    drawArcade(c);
-    drawCat(c);
-    drawSofa(c);
-    drawPlant(6, 452, c);
-    drawPlant(836, 452, c);
-    drawPlant(250, 444, c);
-  })();
-
-  // ---------- 动态元素 ----------
-
-  function drawTaskBoard() {
-    // 墙上白板：显示当前任务需求
-    box(276, 12, 300, 66, "#fdfdf8", "#7a4a24");
-    px(279, 70, 294, 5, "#e6e0d0");
-    px(290, 72, 18, 4, "#d2655a");
-    px(312, 72, 18, 4, "#5a9fd4");
-    ctx.fillStyle = INK;
-    ctx.textAlign = "left";
-    ctx.font = `bold 11px ${FONT}`;
-    ctx.fillText("今日任务", 288, 30);
-    ctx.font = `12px ${FONT}`;
-    // 按实测宽度截断，避免长需求溢出白板
-    const full = requirement || "等待 CEO 发布任务…";
-    let text = full;
-    while (text.length > 2 && ctx.measureText(text).width > 274) {
-      text = text.slice(0, -1);
     }
-    if (text !== full) text = text.slice(0, -1) + "…";
-    ctx.fillStyle = requirement ? INK : "#a88a6c";
-    ctx.fillText(text, 288, 52);
+    // 中央走道地毯，仍严格落在地面世界坐标上。
+    poly([project(0.8, 3.25, 0.01), project(9.2, 3.25, 0.01), project(9.2, 3.85, 0.01), project(0.8, 3.85, 0.01)], "#b95f4b", c, "#7f4032");
+    for (let x = 1; x < 9; x += 0.65) {
+      const p = project(x, 3.55, 0.02);
+      const s = 3 * camera.zoom;
+      poly([{ x: p.x, y: p.y - s }, { x: p.x + s * 2, y: p.y }, { x: p.x, y: p.y + s }, { x: p.x - s * 2, y: p.y }], "#efb67d", c);
+    }
   }
 
-  function drawStation(agent, phase) {
-    const { x, y } = agent;
-    const st = state.get(agent.id);
-    const focus = activeAgent === agent.id && ACTIVE.has(st.status);
+  function drawWalls(c) {
+    const wallY = [project(0, 0, 0), project(10, 0, 0), project(10, 0, 3.55), project(0, 0, 3.55)];
+    const wallX = [project(0, 0, 0), project(0, 8, 0), project(0, 8, 3.55), project(0, 0, 3.55)];
+    poly(wallY, "#f4dfb8", c, "#7a4a24");
+    poly(wallX, "#e8cda2", c, "#7a4a24");
+    for (let x = 0.35; x < 10; x += 0.75) wallRectY(c, x, 0.18, 0.16, 3.25, "rgba(192,133,72,0.10)");
+    for (let y = 0.35; y < 8; y += 0.75) wallRectX(c, y, 0.18, 0.16, 3.25, "rgba(122,74,36,0.09)");
+    wallRectY(c, 0, 0.08, 10, 0.18, "#a8693a", "#7a4a24");
+    wallRectX(c, 0, 0.08, 8, 0.18, "#936039", "#7a4a24");
 
-    // 工位地垫：焦点员工按状态着色，悬停时金色描边
-    const matBorder = hovered === agent.id ? "#f2b134" : "#b98447";
-    box(x - 90, y - 72, 180, 144, focus ? STATUS_FILL[st.status] : "#e3bd84", matBorder);
-
-    // 椅背
-    box(x - 24, y - 60, 48, 56, agent.dark, INK);
-    px(x - 20, y - 56, 40, 4, agent.color);
-  }
-
-  function drawCharacter(agent, phase) {
-    const { x, y } = agent;
-    const st = state.get(agent.id);
-    const focus = activeAgent === agent.id && ACTIVE.has(st.status);
-    const still = reduceMotion.matches;
-    const bob = focus && !still ? Math.round(Math.sin(phase * 6) * 1.5) : 0;
-    const shake = focus && st.status === "fixing" && !still ? Math.round(Math.sin(phase * 22) * 1.5) : 0;
-    const cx = x + shake;
-    const top = y - 64 + bob;
-
-    // 身体（衬衫 + 领口）
-    px(cx - 17, top + 30, 34, 36, INK);
-    px(cx - 15, top + 32, 30, 34, agent.color);
-    px(cx - 4, top + 32, 8, 6, "#fff8e6");
-    px(cx - 15, top + 54, 30, 4, agent.dark);
-
-    // 头部：原创 Q 版大头
-    drawHead(ctx, cx - 15, top, LOOKS[agent.talent], {
-      blink: !still && (Math.floor(phase * 10 + agent.x) % 37 === 0),
-      sad: st.status === "error",
-      happy: st.status === "completed",
+    // 后墙窗户与左墙窗户。
+    [[0.75, 1.65], [7.65, 1.65]].forEach(([x, z]) => {
+      wallRectY(c, x - 0.08, z - 0.08, 1.9, 1.35, "#7a4a24");
+      wallRectY(c, x, z, 1.74, 1.18, "#9fd3f0");
+      wallRectY(c, x, z, 1.74, 0.28, "#cdeaf8");
+      wallRectY(c, x + 0.82, z, 0.08, 1.18, "#7a4a24");
+      wallRectY(c, x + 0.25, z + 0.68, 0.48, 0.14, "#fff8e6");
+      wallRectY(c, x + 1.15, z + 0.42, 0.38, 0.14, "#fff8e6");
     });
+    wallRectX(c, 1.1, 1.65, 1.9, 1.35, "#7a4a24");
+    wallRectX(c, 1.18, 1.73, 1.74, 1.18, "#8fc5e5");
+    wallRectX(c, 2.0, 1.73, 0.08, 1.18, "#7a4a24");
+    wallRectX(c, 1.45, 2.35, 0.52, 0.14, "#fff8e6");
 
-    // 手：工作时左右交替敲键盘
-    const arm = focus && !still ? Math.round(Math.sin(phase * 14) * 2) : 0;
-    px(cx - 26, y - 6 + arm, 10, 8, INK);
-    px(cx - 24, y - 4 + arm, 6, 4, SKIN);
-    px(cx + 16, y - 6 - arm, 10, 8, INK);
-    px(cx + 18, y - 4 - arm, 6, 4, SKIN);
+    // 今日任务白板（面向玩家的墙面标牌，绘制在动态层）与原创海报。
+    wallRectX(c, 4.15, 1.42, 1.05, 1.35, "#7a4a24");
+    wallRectX(c, 4.25, 1.52, 0.85, 1.15, "#fff8e6");
+    wallRectX(c, 4.43, 1.85, 0.5, 0.34, "#d2655a");
+    wallRectX(c, 4.53, 1.95, 0.1, 0.14, "#fff8e6");
+    wallRectX(c, 4.78, 2.02, 0.08, 0.08, "#f2b134");
+    wallRectX(c, 4.78, 1.89, 0.08, 0.08, "#6fbf73");
   }
 
-  // 头像绘制（办公室与员工档案卡共用），尺寸 30×30
+  function renderStatic() {
+    bgCtx.clearRect(0, 0, W, H);
+    px(0, 0, W, H, "#6b4226", bgCtx);
+    // 像素墙角环境光：不使用模糊滤镜。
+    px(0, 0, W, H, "#6b4226", bgCtx);
+    drawWalls(bgCtx);
+    drawFloor(bgCtx);
+    staticDirty = false;
+  }
+
+  function drawDesk(agent, phase) {
+    const { x, y } = agent;
+    const st = state.get(agent.id);
+    const focus = activeAgent === agent.id && ACTIVE.has(st.status);
+    const wood = { top: "#e5ad68", front: "#a8693a", side: "#84502c", edge: INK };
+    [[0.12, 0.12], [1.67, 0.12], [0.12, 0.78], [1.67, 0.78]].forEach(([dx, dy]) => {
+      isoBox(ctx, x + dx, y + dy, 0.03, 0.13, 0.13, 0.65, wood);
+    });
+    isoBox(ctx, x + 1.38, y + 0.18, 0.15, 0.42, 0.55, 0.48, { top: "#c98a50", front: "#8f5530", side: "#70401f", edge: INK });
+    isoBox(ctx, x, y, 0.66, 1.95, 1.0, 0.15, wood);
+    // 抽屉把手。
+    const handle = project(x + 1.54, y + 0.74, 0.43);
+    px(handle.x - 4 * camera.zoom, handle.y, 8 * camera.zoom, 2 * camera.zoom, "#f2b134");
+
+    // 显示器有外壳厚度、支架与独立屏幕正面。
+    isoBox(ctx, x + 0.28, y + 0.22, 0.81, 0.11, 0.11, 0.23, { top: "#6a5a4c", front: "#3a2a20", side: "#241a14", edge: INK });
+    isoBox(ctx, x + 0.16, y + 0.13, 0.82, 0.34, 0.25, 0.05, { top: "#5a4636", front: "#3a2a20", side: "#241a14", edge: INK });
+    isoBox(ctx, x + 0.02, y + 0.08, 1.0, 0.88, 0.12, 0.62, { top: "#5a4636", front: "#2a211b", side: "#1b1410", edge: INK });
+    const screen = [project(x + 0.1, y + 0.205, 1.1), project(x + 0.8, y + 0.205, 1.1), project(x + 0.8, y + 0.205, 1.52), project(x + 0.1, y + 0.205, 1.52)];
+    poly(screen, focus ? STATUS_FILL[st.status] : "#40505c", ctx, "#17110d");
+    if (focus) {
+      const scroll = reduceMotion.matches ? 0 : Math.floor(phase * 6) % 4;
+      for (let i = 0; i < 4; i += 1) {
+        const a = project(x + 0.18, y + 0.212, 1.18 + i * 0.075);
+        const b = project(x + 0.3 + [0.24, 0.38, 0.18, 0.31][(i + scroll) % 4], y + 0.212, 1.18 + i * 0.075);
+        poly([a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }], STATUS_COLOR[st.status]);
+      }
+    } else {
+      const led = project(x + 0.76, y + 0.215, 1.07);
+      px(led.x, led.y, 3 * camera.zoom, 3 * camera.zoom, "#6fbf73");
+    }
+    isoBox(ctx, x + 0.94, y + 0.48, 0.82, 0.58, 0.25, 0.04, { top: "#8a7666", front: "#5a4636", side: "#3a2a20", edge: INK });
+    drawDeskItem(agent, x + 1.6, y + 0.25, 0.83);
+  }
+
+  function drawDeskItem(agent, x, y, z) {
+    const colors = { coo: "#5a9fd4", creative: "#f08a5d", delivery: "#4fb3a9", engineer: "#f2b134", reviewer: "#6fbf73", marketer: "#b07fd6" };
+    isoBox(ctx, x, y, z, 0.2, 0.28, 0.06, { top: "#fff8e6", front: "#d8cba9", side: "#b8a984", edge: INK });
+    const p = project(x + 0.1, y + 0.29, z + 0.09);
+    px(p.x - 3 * camera.zoom, p.y - 3 * camera.zoom, 6 * camera.zoom, 6 * camera.zoom, colors[agent.id]);
+  }
+
+  function drawChair(agent) {
+    const p = positions.get(agent.id);
+    const seated = p.y < agent.y;
+    const x = agent.x + 0.63;
+    const y = agent.y - 0.58;
+    const color = { top: agent.color, front: agent.dark, side: agent.dark, edge: INK };
+    isoBox(ctx, x, y, 0.32, 0.65, 0.58, 0.12, color);
+    isoBox(ctx, x + 0.27, y + 0.25, 0.03, 0.1, 0.1, 0.31, { top: "#7d7d7d", front: "#4a4a4a", side: "#333", edge: INK });
+    if (seated) isoBox(ctx, x, y - 0.08, 0.42, 0.65, 0.12, 0.65, color);
+  }
+
   function drawHead(c, hx, hy, look, mood = {}) {
     look = look || LOOKS.coo;
     px(hx, hy + 2, 30, 28, INK, c);
     px(hx + 2, hy + 4, 26, 24, SKIN, c);
     px(hx + 2, hy + 24, 26, 4, SKIN_SHADE, c);
-    // 头发
     px(hx, hy, 30, 10, INK, c);
     px(hx + 2, hy + 2, 26, 8, look.hair, c);
     px(hx + 2, hy + 10, 5, 8, look.hair, c);
     px(hx + 23, hy + 10, 5, 8, look.hair, c);
     px(hx + 12, hy + 10, 8, 3, look.hair, c);
-    // 眼睛
     if (mood.blink) {
       px(hx + 8, hy + 16, 4, 1, INK, c);
       px(hx + 18, hy + 16, 4, 1, INK, c);
@@ -332,156 +246,155 @@ const Office = (() => {
       px(hx + 16, hy + 12, 8, 2, INK, c);
       px(hx + 14, hy + 14, 2, 1, INK, c);
     }
-    // 腮红与嘴
     px(hx + 5, hy + 20, 4, 2, "#f29a8a", c);
     px(hx + 21, hy + 20, 4, 2, "#f29a8a", c);
     if (mood.sad) px(hx + 13, hy + 23, 4, 1, INK, c);
     else px(hx + 13, hy + 22, 4, 2, "#b4552e", c);
   }
 
-  // 每个角色桌上的原创道具，帮助一眼认出岗位
-  const DESK_ITEMS = {
-    coo(x, y) {
-      box(x, y - 22, 22, 26, "#fff8e6", "#7a4a24");
-      px(x + 8, y - 25, 6, 4, "#a8a8a8");
-      px(x + 5, y - 14, 12, 2, "#a88a6c");
-      px(x + 5, y - 9, 9, 2, "#a88a6c");
-    },
-    creative(x, y) {
-      box(x, y - 12, 28, 16, "#fff8e6", INK);
-      px(x + 5, y - 8, 4, 4, "#d2655a");
-      px(x + 12, y - 8, 4, 4, "#f2b134");
-      px(x + 19, y - 8, 4, 4, "#5a9fd4");
-      px(x + 24, y - 30, 3, 20, "#7a4a24");
-      px(x + 23, y - 34, 5, 5, "#b07fd6");
-    },
-    delivery(x, y) {
-      box(x, y - 24, 30, 28, "#fff8e6", INK);
-      px(x + 2, y - 22, 26, 6, "#d2655a");
-      for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) px(x + 5 + i * 8, y - 12 + j * 7, 5, 4, "#a88a6c");
-    },
-    engineer(x, y) {
-      px(x, y - 18, 14, 18, INK);
-      px(x + 2, y - 16, 10, 14, "#fff8e6");
-      px(x + 2, y - 16, 10, 4, "#7a4a24");
-      px(x + 12, y - 12, 5, 6, INK);
-      px(x + 20, y - 6, 18, 6, "#c08548");
-    },
-    reviewer(x, y) {
-      box(x, y - 24, 22, 28, "#fff8e6", INK);
-      px(x + 5, y - 17, 4, 4, "#6fbf73");
-      px(x + 5, y - 9, 4, 4, "#6fbf73");
-      px(x + 11, y - 16, 7, 2, "#a88a6c");
-      px(x + 11, y - 8, 7, 2, "#a88a6c");
-      box(x + 22, y - 18, 14, 14, "#cdeaf8", INK);
-      px(x + 34, y - 6, 4, 8, INK);
-    },
-    marketer(x, y) {
-      px(x, y - 18, 10, 12, INK);
-      px(x + 2, y - 16, 6, 8, "#f2b134");
-      px(x + 8, y - 22, 6, 20, INK);
-      px(x + 10, y - 20, 4, 16, "#d2655a");
-      px(x + 20, y - 26, 16, 26, "#b07fd6");
-      px(x + 23, y - 22, 10, 4, "#fff8e6");
-    },
-  };
-
-  function drawDesk(agent, phase) {
-    const { x, y } = agent;
-    const st = state.get(agent.id);
-    const focus = activeAgent === agent.id && ACTIVE.has(st.status);
-    const still = reduceMotion.matches;
-
-    // 显示器（放在桌面左侧，屏幕朝向观众）
-    box(x - 74, y - 44, 44, 36, "#3a2a20", INK);
-    const screen = focus ? STATUS_FILL[st.status] : "#4a5a6a";
-    px(x - 70, y - 40, 36, 28, screen);
-    if (focus) {
-      // 屏幕上滚动的代码行，只在后端判定为工作状态时出现
-      const scroll = still ? 0 : Math.floor(phase * 6) % 4;
-      for (let i = 0; i < 4; i++) {
-        const w = [24, 16, 28, 12][(i + scroll) % 4];
-        px(x - 66, y - 36 + i * 6, w, 3, STATUS_COLOR[st.status]);
-      }
-    } else {
-      px(x - 66, y - 36, 8, 3, "#6a7a8a");
-    }
-    px(x - 56, y - 8, 8, 6, INK);
-
-    // 桌面与前挡板
-    box(x - 84, y - 4, 168, 16, "#dca464", INK);
-    px(x - 81, y - 1, 162, 3, "#f0c48a");
-    box(x - 80, y + 10, 160, 36, "#a8693a", INK);
-    px(x + 52, y + 18, 22, 20, "#8f5530");
-    px(x + 60, y + 26, 6, 3, "#f2b134");
-
-    // 键盘
-    px(x - 16, y - 2, 32, 6, "#5a4636");
-    px(x - 14, y - 1, 28, 2, "#8a7666");
-
-    (DESK_ITEMS[agent.id] || (() => {}))(x + 38, y - 2);
-
-    // 名牌：名字 + 岗位
-    box(x - 76, y + 16, 124, 22, "#fff8e6", INK);
-    ctx.textAlign = "center";
-    ctx.fillStyle = INK;
-    ctx.font = `bold 10px ${FONT}`;
-    ctx.fillText(`${agent.name} ${agent.role}`, x - 14, y + 31);
-
-    // 状态牌
-    const label = STATUS_TEXT[st.status] || st.status;
-    ctx.font = `bold 11px ${FONT}`;
-    const tw = Math.ceil(ctx.measureText(label).width) + 22;
-    box(x - tw / 2, y + 48, tw, 18, STATUS_FILL[st.status] || "#efd39a", STATUS_COLOR[st.status] || INK);
-    px(x - tw / 2 + 5, y + 54, 6, 6, STATUS_COLOR[st.status] || INK);
-    ctx.fillStyle = INK;
-    ctx.textAlign = "left";
-    ctx.fillText(label, x - tw / 2 + 14, y + 61);
-
-    // 岗位标签（如 Engineer 当前默认角色），数据来自 /api/employees
-    if (st.tag) {
-      ctx.font = `bold 10px ${FONT}`;
-      const gw = Math.ceil(ctx.measureText(st.tag).width) + 10;
-      box(x + 86 - gw, y - 68, gw, 16, "#f2b134", INK);
-      ctx.fillStyle = INK;
-      ctx.fillText(st.tag, x + 91 - gw, y - 56);
-    }
+  function drawShadow(x, y, width = 22) {
+    const p = project(x, y, 0.015);
+    const z = camera.zoom;
+    poly([
+      { x: p.x - width * z, y: p.y }, { x: p.x - width * 0.6 * z, y: p.y - 5 * z },
+      { x: p.x + width * 0.6 * z, y: p.y - 5 * z }, { x: p.x + width * z, y: p.y },
+      { x: p.x + width * 0.6 * z, y: p.y + 5 * z }, { x: p.x - width * 0.6 * z, y: p.y + 5 * z },
+    ], "rgba(69,41,26,0.28)");
   }
 
-  // 头顶状态图标：只反映后端状态，动画只是装饰
-  function drawStatusIcon(agent, phase) {
+  function drawCharacter(agent, phase) {
+    const p = positions.get(agent.id);
     const st = state.get(agent.id);
+    const focus = activeAgent === agent.id && ACTIVE.has(st.status);
+    const seated = p.y < agent.y;
     const still = reduceMotion.matches;
-    const x = agent.x + 22;
-    const y = agent.y - 84 + (still ? 0 : Math.round(Math.sin(phase * 3) * 1));
-    const focus = activeAgent === agent.id;
-    if (st.status === "working" && focus) {
-      box(x, y, 26, 14, "#fff8e6", INK);
-      const n = still ? 3 : (Math.floor(phase * 3) % 3) + 1;
-      for (let i = 0; i < n; i++) px(x + 5 + i * 6, y + 6, 3, 3, STATUS_COLOR.working);
-    } else if (st.status === "reviewing" && focus) {
-      box(x, y - 2, 14, 14, "#cdeaf8", INK);
-      px(x + 12, y + 10, 4, 6, INK);
-    } else if (st.status === "fixing" && focus) {
-      px(x, y, 18, 4, "#7d7d7d");
-      px(x + 14, y - 3, 6, 10, "#7d7d7d");
-      px(x - 6, y + 10, 4, 6, "#5a9fd4");
-    } else if (st.status === "completed") {
-      px(x + 5, y, 4, 14, "#f2b134");
-      px(x, y + 5, 14, 4, "#f2b134");
-      px(x + 3, y + 3, 8, 8, "#f2b134");
-    } else if (st.status === "error") {
-      box(x, y - 4, 14, 20, "#d2655a", INK);
-      px(x + 5, y, 4, 8, "#fff8e6");
-      px(x + 5, y + 10, 4, 3, "#fff8e6");
+    const bob = focus && !still ? Math.round(Math.sin(phase * 7)) : 0;
+    const foot = project(p.x, p.y, 0);
+    const z = camera.zoom;
+    drawShadow(p.x, p.y, 17);
+    ctx.save();
+    ctx.translate(Math.round(foot.x), Math.round(foot.y + bob * z));
+    ctx.scale(z, z);
+    // 腿和鞋：站立与坐姿共用同一比例角色。
+    if (seated) {
+      px(-12, -13, 9, 11, agent.dark);
+      px(3, -13, 9, 11, agent.dark);
+      px(-14, -5, 12, 5, INK);
+      px(2, -5, 12, 5, INK);
+    } else {
+      px(-10, -18, 8, 15, agent.dark);
+      px(2, -18, 8, 15, agent.dark);
+      px(-12, -5, 10, 5, INK);
+      px(2, -5, 10, 5, INK);
+    }
+    const bodyY = seated ? -38 : -43;
+    px(-15, bodyY, 30, 28, INK);
+    px(-13, bodyY + 2, 26, 24, agent.color);
+    px(-4, bodyY + 2, 8, 6, "#fff8e6");
+    px(-13, bodyY + 20, 26, 4, agent.dark);
+    const arm = focus && !still ? Math.round(Math.sin(phase * 14) * 2) : 0;
+    if (st.status === "reviewing") {
+      px(12, bodyY + 5, 8, 17, agent.color);
+      px(12, bodyY + 1, 7, 7, SKIN);
+      px(-20, bodyY + 8, 8, 17, agent.color);
+    } else {
+      px(-21, bodyY + 8 + arm, 8, 18, agent.color);
+      px(13, bodyY + 8 - arm, 8, 18, agent.color);
+      px(-20, bodyY + 22 + arm, 7, 6, SKIN);
+      px(13, bodyY + 22 - arm, 7, 6, SKIN);
+    }
+    drawHead(ctx, -15, bodyY - 30, LOOKS[agent.talent], {
+      blink: !still && (Math.floor(phase * 9 + agent.x * 4) % 41 === 0),
+      sad: st.status === "error",
+      happy: st.status === "completed",
+    });
+    ctx.restore();
+  }
+
+  function drawPlant(x, y) {
+    drawShadow(x + 0.3, y + 0.3, 22);
+    isoBox(ctx, x, y, 0, 0.62, 0.62, 0.55, { top: "#c98a50", front: "#a8693a", side: "#7a4a24", edge: INK });
+    [[0.12, 0.18, 0.52, 0.28, 0.22, 0.65, "#4f9e57"], [0.34, 0.08, 0.55, 0.25, 0.25, 0.85, "#6fbf73"], [0.02, 0.35, 0.55, 0.24, 0.2, 0.48, "#2f7a3e"], [0.35, 0.36, 0.55, 0.22, 0.2, 0.55, "#4f9e57"]].forEach(([dx, dy, z, w, d, h, color]) => {
+      isoBox(ctx, x + dx, y + dy, z, w, d, h, { top: color, front: color, side: "#2f7a3e", edge: "#2f6134" });
+    });
+  }
+
+  function drawBookshelf() {
+    isoBox(ctx, 0.28, 3.15, 0, 0.68, 1.55, 1.9, { top: "#c98a50", front: "#7a4a24", side: "#5a3720", edge: INK });
+    const colors = ["#d2655a", "#f2b134", "#6fbf73", "#5a9fd4", "#b07fd6"];
+    [0.25, 0.78, 1.31].forEach((z, row) => {
+      isoBox(ctx, 0.25, 3.12, z, 0.75, 1.62, 0.08, { top: "#c98a50", front: "#a8693a", side: "#7a4a24", edge: INK });
+      for (let i = 0; i < 5; i += 1) {
+        isoBox(ctx, 0.92, 3.25 + i * 0.25, z + 0.08, 0.12, 0.17, 0.34 + (i % 2) * 0.08, { top: colors[(row + i) % 5], front: colors[(row + i) % 5], side: "#5a3720", edge: INK });
+      }
+    });
+  }
+
+  function drawCabinet() {
+    isoBox(ctx, 9.05, 0.65, 0, 0.68, 1.25, 1.3, { top: "#dca464", front: "#a8693a", side: "#7a4a24", edge: INK });
+    [0.38, 0.82].forEach((z) => {
+      const p = project(9.38, 1.91, z);
+      px(p.x - 4 * camera.zoom, p.y, 8 * camera.zoom, 2 * camera.zoom, "#f2b134");
+    });
+  }
+
+  function drawMeeting() {
+    const wood = { top: "#dca464", front: "#a8693a", side: "#7a4a24", edge: INK };
+    isoBox(ctx, 4.1, 6.65, 0.58, 1.9, 0.95, 0.14, wood);
+    isoBox(ctx, 4.28, 6.86, 0, 0.16, 0.16, 0.6, wood);
+    isoBox(ctx, 5.65, 7.22, 0, 0.16, 0.16, 0.6, wood);
+    isoBox(ctx, 4.45, 6.9, 0.74, 0.55, 0.36, 0.04, { top: "#fff8e6", front: "#d8cba9", side: "#b8a984", edge: INK });
+    isoBox(ctx, 5.25, 6.98, 0.74, 0.24, 0.24, 0.25, { top: "#fff8e6", front: "#5a9fd4", side: "#2c6496", edge: INK });
+    [[4.35, 6.05], [5.35, 6.05], [4.35, 7.62], [5.35, 7.62]].forEach(([x, y]) => {
+      isoBox(ctx, x, y, 0.3, 0.52, 0.45, 0.12, { top: "#5a9fd4", front: "#2c6496", side: "#244f75", edge: INK });
+      isoBox(ctx, x + 0.2, y + 0.18, 0, 0.1, 0.1, 0.32, { top: "#7d7d7d", front: "#4a4a4a", side: "#333", edge: INK });
+    });
+  }
+
+  function drawSofa() {
+    isoBox(ctx, 0.8, 6.75, 0.18, 1.65, 0.75, 0.38, { top: "#7fb6e0", front: "#4a86b8", side: "#2c6496", edge: INK });
+    isoBox(ctx, 0.8, 6.67, 0.5, 1.65, 0.18, 0.65, { top: "#7fb6e0", front: "#5a9fd4", side: "#2c6496", edge: INK });
+    isoBox(ctx, 0.72, 6.68, 0.25, 0.18, 0.82, 0.52, { top: "#7fb6e0", front: "#4a86b8", side: "#2c6496", edge: INK });
+    isoBox(ctx, 2.35, 6.68, 0.25, 0.18, 0.82, 0.52, { top: "#7fb6e0", front: "#4a86b8", side: "#2c6496", edge: INK });
+  }
+
+  function drawSelection(agent) {
+    if (selected !== agent.id && hovered !== agent.id) return;
+    const x = agent.x - 0.18;
+    const y = agent.y - 0.82;
+    const color = selected === agent.id ? "#f2b134" : "#fff8e6";
+    poly([project(x, y, 0.025), project(x + 2.35, y, 0.025), project(x + 2.35, y + 2.25, 0.025), project(x, y + 2.25, 0.025)], "rgba(242,177,52,0.08)", ctx, color);
+  }
+
+  function drawLabels(agent) {
+    const st = state.get(agent.id);
+    const p = positions.get(agent.id);
+    const foot = project(p.x, p.y, 0);
+    const z = camera.zoom;
+    const label = `${agent.name} · ${STATUS_TEXT[st.status] || st.status}`;
+    ctx.font = `bold ${Math.max(11, Math.round(14 * z))}px ${FONT}`;
+    const width = Math.ceil(ctx.measureText(label).width) + 18 * z;
+    const y = foot.y + 9 * z;
+    box(foot.x - width / 2, y, width, 18 * z, STATUS_FILL[st.status], STATUS_COLOR[st.status]);
+    px(foot.x - width / 2 + 5 * z, y + 6 * z, 5 * z, 5 * z, STATUS_COLOR[st.status]);
+    ctx.textAlign = "left";
+    ctx.fillStyle = INK;
+    ctx.fillText(label, foot.x - width / 2 + 13 * z, y + 13 * z);
+    if (st.tag) {
+      ctx.font = `bold ${Math.max(10, Math.round(12 * z))}px ${FONT}`;
+      const tw = ctx.measureText(st.tag).width + 14 * z;
+      const desk = project(agent.x + 1.82, agent.y + 0.15, 1.05);
+      box(desk.x - tw / 2, desk.y - 12 * z, tw, 17 * z, "#f2b134", INK);
+      ctx.fillStyle = INK;
+      ctx.textAlign = "center";
+      ctx.fillText(st.tag, desk.x, desk.y);
     }
   }
 
   function wrap(text, max) {
-    const chars = [...text];
     const lines = [];
     let line = "";
-    for (const ch of chars) {
+    for (const ch of String(text || "")) {
       line += ch;
       if ([...line].length >= max) {
         lines.push(line);
@@ -492,54 +405,138 @@ const Office = (() => {
     return lines.slice(0, 2);
   }
 
-  function drawBubble(agent) {
+  function drawBubble(agent, now) {
     const st = state.get(agent.id);
-    // 冲突观点（setSpeech）来自真实 conflict.opinion 事件，即使员工已空闲也保留展示；
-    // 状态类发言只在“正在干活”或出错时冒泡，避免长期占用画面。
+    const p = positions.get(agent.id);
+    const head = project(p.x, p.y, 2.35);
+    const z = camera.zoom;
     const text = st.speech || (SPEAKING.has(st.status) ? st.message : "");
-    if (!text) return;
-    const lines = wrap(text, 13);
-    const boxW = Math.max(...lines.map((l) => [...l].length)) * 12 + 18;
-    const boxH = lines.length * 15 + 12;
-    const bx = Math.min(Math.max(agent.x - boxW / 2, 4), W - boxW - 4);
-    const by = agent.y - 90 - boxH;
-    const accent = STATUS_COLOR[st.status] || INK;
-
-    px(bx + 3, by + 3, boxW, boxH, "rgba(69,41,26,0.35)");
-    box(bx, by, boxW, boxH, "#fffdf5", INK);
-    px(bx + 2, by + 2, 4, boxH - 4, accent);
-    // 小尾巴
-    const tx = Math.min(Math.max(agent.x - 4, bx + 8), bx + boxW - 16);
-    px(tx, by + boxH - 2, 10, 4, "#fffdf5");
-    px(tx - 2, by + boxH - 2, 2, 6, INK);
-    px(tx + 10, by + boxH - 2, 2, 4, INK);
-    px(tx, by + boxH + 2, 6, 2, INK);
-    px(tx + 6, by + boxH + 2, 4, 2, INK);
-
-    ctx.fillStyle = INK;
-    ctx.font = `11px ${FONT}`;
-    ctx.textAlign = "left";
-    lines.forEach((line, i) => ctx.fillText(line, bx + 10, by + 17 + i * 15));
+    if (text) {
+      const lines = wrap(text, 12);
+      const boxW = Math.max(...lines.map((l) => [...l].length)) * 11 * z + 18 * z;
+      const boxH = lines.length * 15 * z + 12 * z;
+      const bx = Math.min(Math.max(head.x - boxW / 2, 4), W - boxW - 4);
+      const by = Math.max(4, head.y - boxH - 8 * z);
+      px(bx + 3 * z, by + 3 * z, boxW, boxH, "rgba(69,41,26,0.35)");
+      box(bx, by, boxW, boxH, "#fffdf5", INK);
+      px(bx + 2 * z, by + 2 * z, 4 * z, boxH - 4 * z, STATUS_COLOR[st.status]);
+      ctx.fillStyle = INK;
+      ctx.font = `${Math.max(10, Math.round(12 * z))}px ${FONT}`;
+      ctx.textAlign = "left";
+      lines.forEach((line, i) => ctx.fillText(line, bx + 10 * z, by + 17 * z + i * 15 * z));
+    }
+    if (st.status === "working" && activeAgent === agent.id) {
+      const n = reduceMotion.matches ? 3 : (Math.floor(now / 350) % 3) + 1;
+      box(head.x + 18 * z, head.y - 4 * z, 28 * z, 16 * z, "#fff8e6", INK);
+      for (let i = 0; i < n; i += 1) px(head.x + (24 + i * 7) * z, head.y + 3 * z, 3 * z, 3 * z, STATUS_COLOR.working);
+    } else if (st.status === "completed") {
+      ctx.fillStyle = STATUS_COLOR.completed;
+      ctx.font = `bold ${Math.max(14, Math.round(20 * z))}px ${FONT}`;
+      ctx.textAlign = "center";
+      ctx.fillText("✓", head.x + 25 * z, head.y + 8 * z);
+    } else if (st.status === "error") {
+      box(head.x + 18 * z, head.y - 8 * z, 18 * z, 22 * z, "#d2655a", INK);
+      px(head.x + 25 * z, head.y - 3 * z, 4 * z, 8 * z, "#fff8e6");
+      px(head.x + 25 * z, head.y + 8 * z, 4 * z, 3 * z, "#fff8e6");
+    }
+    if (st.noticeUntil > now) {
+      const rise = reduceMotion.matches ? 0 : Math.floor((st.noticeUntil - now) / 400) % 3;
+      ctx.font = `bold ${Math.max(10, Math.round(12 * z))}px ${FONT}`;
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#2f7a3e";
+      ctx.fillText("+ TASK CLEAR", head.x, head.y - (24 + rise * 2) * z);
+    }
   }
 
-  function frame(ts) {
-    const phase = ts / 1000;
-    ctx.drawImage(bg, 0, 0);
-    drawTaskBoard();
-    // 按 y 排序，保证下排遮挡关系正确
-    [...AGENTS]
-      .sort((a, b) => a.y - b.y)
-      .forEach((agent) => {
-        drawStation(agent, phase);
-        drawCharacter(agent, phase);
-        drawDesk(agent, phase);
-        drawStatusIcon(agent, phase);
-      });
-    AGENTS.forEach(drawBubble);
+  function targetPosition(agent) {
+    const st = state.get(agent.id);
+    // 工作/修复在桌后；思考、完成、出错走到桌前。深度随真实世界坐标改变。
+    const front = st.status === "reviewing" || st.status === "completed" || st.status === "error";
+    return { x: agent.x + (front ? 0.65 : 0.2), y: agent.y + (front ? 1.12 : -0.58) };
+  }
+
+  function updatePositions() {
+    let moving = false;
+    AGENTS.forEach((agent) => {
+      const current = positions.get(agent.id);
+      const target = targetPosition(agent);
+      const factor = reduceMotion.matches ? 1 : 0.22;
+      current.x += (target.x - current.x) * factor;
+      current.y += (target.y - current.y) * factor;
+      if (Math.abs(target.x - current.x) + Math.abs(target.y - current.y) > 0.015) moving = true;
+      else {
+        current.x = target.x;
+        current.y = target.y;
+      }
+    });
+    return moving;
+  }
+
+  function agentBounds(agent) {
+    const p = positions.get(agent.id);
+    const points = [];
+    [0, 1.8].forEach((z) => {
+      points.push(project(p.x - 0.35, p.y, z), project(p.x + 0.35, p.y, z));
+    });
+    [[0, 0, 0], [1.95, 0, 0], [1.95, 1, 0], [0, 1, 0], [0, 0, 1.65], [1.95, 0, 1.65], [1.95, 1, 1.65], [0, 1, 1.65]].forEach(([x, y, z]) => points.push(project(agent.x + x, agent.y + y, z)));
+    const xs = points.map((v) => v.x);
+    const ys = points.map((v) => v.y);
+    return { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) };
+  }
+
+  function syncHotspots() {
+    AGENTS.forEach((agent) => {
+      const button = hotspots.get(agent.id);
+      if (!button) return;
+      const b = agentBounds(agent);
+      button.style.left = `${(b.left / W) * 100}%`;
+      button.style.top = `${(b.top / H) * 100}%`;
+      button.style.width = `${((b.right - b.left) / W) * 100}%`;
+      button.style.height = `${((b.bottom - b.top) / H) * 100}%`;
+      button.style.visibility = b.right < 0 || b.left > W || b.bottom < 0 || b.top > H ? "hidden" : "visible";
+      button.classList.toggle("selected", selected === agent.id);
+    });
+  }
+
+  function frame(now) {
     requestAnimationFrame(frame);
-  }
+    if (document.hidden) return;
+    const moving = updatePositions();
+    const animated = activeAgent && ACTIVE.has(state.get(activeAgent).status);
+    const notices = [...state.values()].some((s) => s.noticeUntil > now);
+    if (!dirty && !moving && !animated && !notices) return;
+    const interval = animated || moving ? 1000 / 15 : 80;
+    if (now - lastFrame < interval) return;
+    lastFrame = now;
+    if (staticDirty) renderStatic();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, W, H);
+    ctx.drawImage(bg, 0, 0);
 
-  // ---------- 点击热区：由 AGENTS 坐标生成，与绘制位置一致 ----------
+    const objects = [
+      { depth: 4.1, draw: drawBookshelf },
+      { depth: 10.4, draw: drawCabinet },
+      { depth: 10.9, draw: drawMeeting },
+      { depth: 8.3, draw: drawSofa },
+      { depth: 8.2, draw: () => drawPlant(0.35, 7.15) },
+      { depth: 16.8, draw: () => drawPlant(9.05, 7.0) },
+      { depth: 12.1, draw: () => drawPlant(8.95, 3.0) },
+    ];
+    AGENTS.forEach((agent) => {
+      objects.push({ depth: agent.x + agent.y + 0.48, draw: () => drawDesk(agent, now / 1000) });
+      objects.push({ depth: agent.x + agent.y - 0.35, draw: () => drawChair(agent) });
+      const p = positions.get(agent.id);
+      objects.push({ depth: p.x + p.y, draw: () => drawCharacter(agent, now / 1000) });
+    });
+    // 所有可遮挡对象以世界 x+y 排序；不是固定 CSS z-index。
+    objects.sort((a, b) => a.depth - b.depth).forEach((object) => object.draw());
+    AGENTS.forEach(drawSelection);
+    AGENTS.forEach((agent) => drawLabels(agent));
+    AGENTS.forEach((agent) => drawBubble(agent, now));
+    syncHotspots();
+    dirty = false;
+  }
 
   function buildHotspots() {
     const layer = document.getElementById("office-hotspots");
@@ -550,60 +547,113 @@ const Office = (() => {
       button.type = "button";
       button.className = "hotspot";
       button.dataset.agent = agent.id;
-      button.style.left = `${((agent.x - HIT.left) / W) * 100}%`;
-      button.style.top = `${((agent.y - HIT.top) / H) * 100}%`;
-      button.style.width = `${(HIT.width / W) * 100}%`;
-      button.style.height = `${(HIT.height / H) * 100}%`;
-      const label =
-        agent.id === "engineer"
-          ? `${agent.name} · ${agent.role}：查看档案并切换主力/备用工程师`
-          : `${agent.name} · ${agent.role}：查看员工档案`;
+      const label = agent.id === "engineer" ? `${agent.name} · ${agent.role}：查看档案并切换主力/备用工程师` : `${agent.name} · ${agent.role}：查看员工档案`;
       button.title = label;
       button.setAttribute("aria-label", label);
       button.addEventListener("click", () => {
+        selected = agent.id;
+        dirty = true;
         if (selectHandler) selectHandler(agent.id, agent.talent);
       });
-      const enter = () => (hovered = agent.id);
-      const leave = () => {
-        if (hovered === agent.id) hovered = null;
-      };
+      const enter = () => { hovered = agent.id; dirty = true; };
+      const leave = () => { if (hovered === agent.id) hovered = null; dirty = true; };
       button.addEventListener("mouseenter", enter);
       button.addEventListener("focus", enter);
       button.addEventListener("mouseleave", leave);
       button.addEventListener("blur", leave);
       layer.appendChild(button);
+      hotspots.set(agent.id, button);
     });
   }
 
-  // ---------- 对外接口 ----------
+  function clampCamera() {
+    camera.zoom = Math.max(0.75, Math.min(1.75, camera.zoom));
+    camera.panX = Math.max(-220, Math.min(220, camera.panX));
+    camera.panY = Math.max(-150, Math.min(150, camera.panY));
+  }
+
+  function cameraChanged() {
+    clampCamera();
+    dirty = true;
+    staticDirty = true;
+    const readout = document.getElementById("office-zoom");
+    if (readout) readout.textContent = `${Math.round(camera.zoom * 100)}%`;
+  }
+
+  function zoomBy(delta) {
+    camera.zoom += delta;
+    cameraChanged();
+  }
+
+  function bindCameraControls() {
+    document.getElementById("office-zoom-in")?.addEventListener("click", () => zoomBy(0.25));
+    document.getElementById("office-zoom-out")?.addEventListener("click", () => zoomBy(-0.25));
+    document.getElementById("office-reset")?.addEventListener("click", () => {
+      camera.zoom = 1.3;
+      camera.panX = 0;
+      camera.panY = 0;
+      cameraChanged();
+    });
+    const viewport = document.querySelector(".office-viewport");
+    viewport?.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      zoomBy(event.deltaY < 0 ? 0.1 : -0.1);
+    }, { passive: false });
+    canvas.addEventListener("pointerdown", (event) => {
+      dragging = { x: event.clientX, y: event.clientY, panX: camera.panX, panY: camera.panY };
+      canvas.setPointerCapture(event.pointerId);
+      canvas.classList.add("dragging");
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+      const rect = canvas.getBoundingClientRect();
+      camera.panX = dragging.panX + ((event.clientX - dragging.x) / rect.width) * W;
+      camera.panY = dragging.panY + ((event.clientY - dragging.y) / rect.height) * H;
+      cameraChanged();
+    });
+    const stopDrag = () => { dragging = null; canvas.classList.remove("dragging"); };
+    canvas.addEventListener("pointerup", stopDrag);
+    canvas.addEventListener("pointercancel", stopDrag);
+  }
+
+  function resize() {
+    dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.imageSmoothingEnabled = false;
+    dirty = true;
+  }
 
   function setAgent(agentId, status, message) {
     const entry = state.get(agentId);
     if (!entry) return;
     if (status) {
+      const previous = entry.status;
       entry.status = status;
-      // 同一时刻只允许一名员工成为动画焦点
       if (ACTIVE.has(status)) activeAgent = agentId;
       else if (activeAgent === agentId) activeAgent = null;
+      if (status === "completed" && previous !== "completed") entry.noticeUntil = performance.now() + 2400;
     }
     if (message) entry.message = message;
+    dirty = true;
   }
 
   function setRequirement(text) {
     requirement = (text || "").trim();
+    dirty = true;
   }
 
-  // 只更新观点气泡，不改变员工状态；文本必须来自后端 conflict.* 事件
   function setSpeech(agentId, text) {
     const entry = state.get(agentId);
     if (!entry) return;
     entry.speech = (text || "").trim();
+    dirty = true;
   }
 
-  // 工位标签（纯展示），例如 Engineer 岗位当前默认启用的角色
   function setTag(agentId, text) {
     const entry = state.get(agentId);
     if (entry) entry.tag = (text || "").trim();
+    dirty = true;
   }
 
   function resetAgents() {
@@ -611,15 +661,14 @@ const Office = (() => {
       entry.status = "idle";
       entry.message = "";
       entry.speech = "";
+      entry.noticeUntil = 0;
     });
     activeAgent = null;
+    dirty = true;
   }
 
-  function onSelect(handler) {
-    selectHandler = handler;
-  }
+  function onSelect(handler) { selectHandler = handler; }
 
-  // 在任意 canvas 上绘制员工头像（员工档案卡使用）
   function drawPortrait(target, talentName) {
     const c = target.getContext("2d");
     const look = LOOKS[talentName] || LOOKS.coo;
@@ -637,7 +686,10 @@ const Office = (() => {
   }
 
   buildHotspots();
+  bindCameraControls();
+  resize();
+  window.addEventListener("resize", resize, { passive: true });
+  document.addEventListener("visibilitychange", () => { dirty = true; });
   requestAnimationFrame(frame);
-
   return { setAgent, setRequirement, setSpeech, setTag, resetAgents, onSelect, drawPortrait };
 })();

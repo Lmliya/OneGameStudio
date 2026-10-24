@@ -1,5 +1,6 @@
 # OneGameStudio 开发交接文档
 
+> 更新（2026-10-25，未提交）：前端完成 2.5D 等距像素办公室升级（世界坐标投影、立体家具、六岗位角色动画、深度排序、投影热区、缩放/拖动/复位）与全站像素 UI 统一（Design Tokens + 统一组件风格）；业务逻辑、API、WebSocket 未动。真实浏览器验收：六热区点击 6/6 PASS、4 种视口 + 高 DPI 无控制台错误。详见 [pixel-ui-audit.md](pixel-ui-audit.md) 第 8 节与 [progress.md](progress.md)。
 > 生成时间：2026-10-24（阶段 10 完成后更新）
 > 仓库状态：分支 `main`，最新提交 `8058ab3 完成了最初版本`，已推送 `origin/main`（仓库为 private）；工作区仅有 `backend/providers/__init__.py` 一处未提交改动
 > 本文描述的是**实际代码与实测结果**，未实现的功能统一放在「未完成模块」。
