@@ -6,29 +6,29 @@
 
 ## 1. 运行环境审计
 
-| 项目 | 现状 |
-| --- | --- |
-| Python | `>=3.12`，使用 `uv` 管理 |
-| Web 框架 | FastAPI + uvicorn，提供 REST 与 WebSocket |
-| 长连接 | `/ws/tasks/{task_id}`，需要平台支持 WebSocket 升级 |
+| 项目         | 现状                                                                          |
+| ------------ | ----------------------------------------------------------------------------- |
+| Python       | `>=3.12`，使用 `uv` 管理                                                      |
+| Web 框架     | FastAPI + uvicorn，提供 REST 与 WebSocket                                     |
+| 长连接       | `/ws/tasks/{task_id}`，需要平台支持 WebSocket 升级                            |
 | 浏览器自动化 | 机械门禁在 **Live 执行任务时** 使用 Playwright + Chromium；仅浏览 Demo 不需要 |
-| 存储 | 文件系统：`output/{task_id}/` 保存 `task.json`、游戏、版本、审查、营销产物 |
-| 版本历史 | 不可变 `versions/*.json` + `history/*.html`，依赖持久化磁盘 |
-| 密钥 | 仅从服务端环境变量读取，前端不接触 `LLM_API_KEY` |
-| CORS | 前端由同一个 FastAPI 进程托管，同源，无需 CORS；分离部署时才需要白名单 |
+| 存储         | 文件系统：`output/{task_id}/` 保存 `task.json`、游戏、版本、审查、营销产物    |
+| 版本历史     | 不可变 `versions/*.json` + `history/*.html`，依赖持久化磁盘                   |
+| 密钥         | 仅从服务端环境变量读取，前端不接触 `LLM_API_KEY`                              |
+| CORS         | 前端由同一个 FastAPI 进程托管，同源，无需 CORS；分离部署时才需要白名单        |
 
 结论：**不能使用纯静态托管**（Vercel / Netlify / GitHub Pages 无法运行 Python 工作流）。
 需要支持常驻进程、WebSocket 与持久化磁盘的平台。
 
 ## 2. 平台对比
 
-| 平台 | WebSocket | 持久化磁盘 | 休眠 | 浏览器依赖 | 结论 |
-| --- | --- | --- | --- | --- | --- |
-| Render（Docker，Starter+） | 支持 | 支持 Disk | Starter 不休眠 | Docker 内可安装 Chromium | **推荐** |
-| Render 免费 Web Service | 支持 | 不支持 | 15 分钟无流量休眠 | 原生构建难装 Chromium | 仅适合只读 Demo，历史会丢 |
-| Fly.io（Machines + Volume） | 支持 | Volume | 可保持 1 台常驻 | Docker 内可安装 | 可选 |
-| Railway（Volume） | 支持 | Volume | 视计划 | Docker 内可安装 | 可选 |
-| Vercel / Netlify | 无长驻 WS | 无 | 函数级 | 无法运行持续工作流 | **不适用** |
+| 平台                        | WebSocket | 持久化磁盘 | 休眠              | 浏览器依赖               | 结论                      |
+| --------------------------- | --------- | ---------- | ----------------- | ------------------------ | ------------------------- |
+| Render（Docker，Starter+）  | 支持      | 支持 Disk  | Starter 不休眠    | Docker 内可安装 Chromium | **推荐**                  |
+| Render 免费 Web Service     | 支持      | 不支持     | 15 分钟无流量休眠 | 原生构建难装 Chromium    | 仅适合只读 Demo，历史会丢 |
+| Fly.io（Machines + Volume） | 支持      | Volume     | 可保持 1 台常驻   | Docker 内可安装          | 可选                      |
+| Railway（Volume）           | 支持      | Volume     | 视计划            | Docker 内可安装          | 可选                      |
+| Vercel / Netlify            | 无长驻 WS | 无         | 函数级            | 无法运行持续工作流       | **不适用**                |
 
 费用：Render Starter 实例与磁盘均会产生费用（以官网实时价格为准）；免费层会休眠且无磁盘。
 Live 模式还会产生模型 API 费用，默认受 `BUDGET_USD`、并发与频率限制约束。
@@ -43,7 +43,7 @@ Live 模式还会产生模型 API 费用，默认受 `BUDGET_USD`、并发与频
 
 ### 3.1 用户需要执行的操作
 
-1. 把仓库推送到 GitHub（**本轮未推送**，见 README 的仓库状态）。
+1. 在 GitHub 把 `Lmliya/OneGameStudio` 从 private 转为 public（仓库已推送，转换需用户确认）。
 2. 在 Render 新建 Blueprint，选择该仓库，识别 `render.yaml`。
 3. 确认实例计划支持 Disk（Starter 及以上），挂载 `/data`。
 4. 仅当需要 Live 时，在 Render 控制台手动添加：
@@ -56,21 +56,21 @@ Live 模式还会产生模型 API 费用，默认受 `BUDGET_USD`、并发与频
 
 ### 3.2 环境变量
 
-| 变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `APP_MODE` | `demo` | `demo` 只读历史；`live` 调用真实模型 |
-| `DEMO_READ_ONLY` | `false` | 公开部署必须 `true` |
-| `MOCK_MODE` | `true` | `false` 才会调用真实模型 |
-| `OUTPUT_DIR` | `output` | 建议 `/data/output` |
-| `EVOLUTION_DIR` | `output/evolution` | 建议 `/data/evolution` |
-| `DEMO_DIR` | `demo/tasks` | 预验证历史任务 |
-| `ACCESS_TOKEN` | 空 | 非空时创建任务必须携带 `X-OGS-Token` |
-| `TASK_RATE_LIMIT_PER_MINUTE` | `30` | 单 IP 每分钟任务数 |
-| `MAX_ACTIVE_TASKS` | `3` | 活跃任务上限 |
-| `BUDGET_USD` | `1.0` | 单任务预算 |
-| `MAX_CONCURRENT_CALLS` | `2` | 单任务并发模型调用 |
-| `LLM_API_KEY` / `LLM_MODEL` / `LLM_BASE_URL` | 空 | Live 必填 |
-| `MODEL_PRICES` | 空 | JSON 价格表；为空时费用标记为 unknown |
+| 变量                                         | 默认               | 说明                                  |
+| -------------------------------------------- | ------------------ | ------------------------------------- |
+| `APP_MODE`                                   | `demo`             | `demo` 只读历史；`live` 调用真实模型  |
+| `DEMO_READ_ONLY`                             | `false`            | 公开部署必须 `true`                   |
+| `MOCK_MODE`                                  | `true`             | `false` 才会调用真实模型              |
+| `OUTPUT_DIR`                                 | `output`           | 建议 `/data/output`                   |
+| `EVOLUTION_DIR`                              | `output/evolution` | 建议 `/data/evolution`                |
+| `DEMO_DIR`                                   | `demo/tasks`       | 预验证历史任务                        |
+| `ACCESS_TOKEN`                               | 空                 | 非空时创建任务必须携带 `X-OGS-Token`  |
+| `TASK_RATE_LIMIT_PER_MINUTE`                 | `30`               | 单 IP 每分钟任务数                    |
+| `MAX_ACTIVE_TASKS`                           | `3`                | 活跃任务上限                          |
+| `BUDGET_USD`                                 | `1.0`              | 单任务预算                            |
+| `MAX_CONCURRENT_CALLS`                       | `2`                | 单任务并发模型调用                    |
+| `LLM_API_KEY` / `LLM_MODEL` / `LLM_BASE_URL` | 空                 | Live 必填                             |
+| `MODEL_PRICES`                               | 空                 | JSON 价格表；为空时费用标记为 unknown |
 
 ### 3.3 持久化与重启
 
@@ -98,7 +98,7 @@ Live 模式还会产生模型 API 费用，默认受 `BUDGET_USD`、并发与频
 
 1. 公开地址能打开首页。
 2. `/api/health` 返回 `status: ok`。
-3. Demo 模式横幅明确显示，历史任务自动加载。
+3. Demo 模式徽章明确显示，历史任务自动加载。
 4. 像素办公室按事件回放，员工状态来自真实历史事件。
 5. 版本切换、最终版本、游戏试玩正常。
 6. 刷新页面后任务与版本仍在。

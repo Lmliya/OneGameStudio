@@ -868,19 +868,3 @@ ul.plain {
 .status-rejected {
   color: var(--danger);
 }
-
-/* Demo / Live 模式横幅：明确区分历史回放与真实模型调用 */
-.mode-banner {
-  padding: 6px 14px;
-  border-bottom: 2px solid var(--border);
-  background: #3a2f12;
-  color: var(--warn);
-  font-size: 12px;
-  text-align: center;
-  letter-spacing: 0.5px;
-}
-
-.mode-banner.live {
-  background: #12301d;
-  color: var(--accent);
-}

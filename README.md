@@ -11,13 +11,13 @@ _上：Demo 模式总览；下：Employee 面板与角色任务记录。_
 
 ## 当前状态
 
-| 项目            | 状态                                                                                     |
-| --------------- | ---------------------------------------------------------------------------------------- |
-| 本地启动        | 可用（uv + FastAPI）                                                                     |
-| npx CLI         | 已提供本地 CLI；**npm 包尚未发布**，`npx onegamestudio` 需发布后才可用                   |
-| GitHub 公开仓库 | 远端 `Lmliya/OneGameStudio` 当前为 **private**；本轮改动未提交、未推送，等待确认后转公开 |
-| 线上部署        | **尚未部署**，无线上地址；配置与步骤已就绪，见 [部署说明](docs/deployment.md)            |
-| 测试            | `uv run pytest -q`，119 passed                                                           |
+| 项目            | 状态                                                                                                |
+| --------------- | --------------------------------------------------------------------------------------------------- |
+| 本地启动        | 可用（uv + FastAPI）                                                                                |
+| npx CLI         | 已提供本地 CLI；**npm 包尚未发布**，`npx onegamestudio` 需发布后才可用                              |
+| GitHub 公开仓库 | 远端 `Lmliya/OneGameStudio` 当前为 **private**；阶段 10 已提交并推送（`8058ab3`），等待确认后转公开 |
+| 线上部署        | **尚未部署**，无线上地址；配置与步骤已就绪，见 [部署说明](docs/deployment.md)                       |
+| 测试            | `uv run pytest -q`，119 passed                                                                      |
 
 ## 功能
 
@@ -60,7 +60,7 @@ npm 包名为 `onegamestudio`。**本轮无法访问 npm registry，包名是否
 ### Demo（默认）
 
 - 只展示 `demo/tasks` 中随仓库提交的历史任务与 `demo/evolution` 快照。
-- 顶部横幅明确标注 **DEMO**，不会调用真实模型。
+- 顶部状态栏的 **DEMO 徽章**明确标注模式，不会调用真实模型。
 - 公开部署设置 `DEMO_READ_ONLY=true` 后，创建任务返回 403。
 - 详见 [docs/demo.md](docs/demo.md)。
 
@@ -126,7 +126,8 @@ node cli/bin.js --check
 - [x] `.env.example`
 - [x] `demo/` 示例数据
 - [x] 测试与截图
-- [ ] GitHub 仓库转为 public 并推送（远端当前为 private，等待用户确认）
+- [x] 推送到远端（仓库当前为 private）
+- [ ] 将 GitHub 仓库转为 public（等待用户确认）
 - [ ] npm 包名确认与发布（等待用户确认）
 
 ## 第三方与素材

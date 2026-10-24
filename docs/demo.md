@@ -17,19 +17,19 @@ node cli/bin.js --demo
 
 ## 2. 演示内容
 
-| 能力 | 数据来源 | 说明 |
-| --- | --- | --- |
-| 像素办公室 | `demo/tasks/{task_id}/task.json` 的事件列表 | WebSocket 先发送空事件快照，再按顺序回放历史事件 |
-| Agent 协作过程 | 同一事件列表 | 员工状态与观点气泡来自当时真实产生的事件 |
-| 游戏版本切换 | `demo/tasks/{task_id}/versions/*.json` 与 `history/` | 不可变版本，可在前端切换预览 |
-| 最终版本 | `task.json` 的 `final_version_id` | 展示当时选定的最终版本 |
-| Talent 记录 | `demo/evolution/`（部署时通过 `EVOLUTION_DIR` 指向） | 版本、检查清单与岗位启用状态 |
+| 能力           | 数据来源                                             | 说明                                             |
+| -------------- | ---------------------------------------------------- | ------------------------------------------------ |
+| 像素办公室     | `demo/tasks/{task_id}/task.json` 的事件列表          | WebSocket 先发送空事件快照，再按顺序回放历史事件 |
+| Agent 协作过程 | 同一事件列表                                         | 员工状态与观点气泡来自当时真实产生的事件         |
+| 游戏版本切换   | `demo/tasks/{task_id}/versions/*.json` 与 `history/` | 不可变版本，可在前端切换预览                     |
+| 最终版本       | `task.json` 的 `final_version_id`                    | 展示当时选定的最终版本                           |
+| Talent 记录    | `demo/evolution/`（部署时通过 `EVOLUTION_DIR` 指向） | 版本、检查清单与岗位启用状态                     |
 
 演示任务：`demo/tasks/adc5c4474a83`，需求为「把游戏背景颜色改成蓝色」，由 Mock 供应商生成。
 
 ## 3. 明确标识
 
-- 页面顶部横幅始终显示 **DEMO 模式 · 只读历史任务回放，不会调用真实模型，也不会产生费用**。
+- 顶部状态栏的 **DEMO 徽章**（悬停显示完整说明）标明「只读历史任务回放，不会调用真实模型，也不会产生费用」。
 - `/api/health` 返回 `mock_mode: true`（Demo 依赖 Mock 供应商）。
 - `task.json` 中记录的模型名是 `mock`，不会冒充真实模型结果。
 - Talent 页面保留当时记录，不做任何“实时进化”伪造。

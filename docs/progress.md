@@ -2,7 +2,7 @@
 
 ## 交接状态（2026-10-24，阶段 10 完成后）
 
-- 分支 `main`，最新提交 `73dd5a2`；阶段 9 与阶段 10 的改动均未提交。
+- 分支 `main`，最新提交 `8058ab3 完成了最初版本`，已推送 `origin/main`；工作区仅有 `backend/providers/__init__.py` 一处未提交改动。
 - 测试：`uv run pytest -q` → **119 passed**。
 - 交接文档：[HANDOFF.md](HANDOFF.md)。
 - 阶段 9 说明：[conflict-protocol.md](conflict-protocol.md)、[fast-sop.md](fast-sop.md)。
@@ -18,7 +18,7 @@
 
 ### 已实现
 
-- **Demo / Live**：`APP_MODE` 控制模式；Demo 读取 `demo/tasks` 预验证任务并通过 WebSocket 回放历史事件，页面横幅明确标记，`DEMO_READ_ONLY=true` 时禁止新建任务。
+- **Demo / Live**：`APP_MODE` 控制模式；Demo 读取 `demo/tasks` 预验证任务并通过 WebSocket 回放历史事件，顶部状态栏用 DEMO 徽章标记，`DEMO_READ_ONLY=true` 时禁止新建任务。
 - **Live 安全**：必须 `MOCK_MODE=false` + `LLM_MODEL` + 服务端 `LLM_API_KEY`，否则 503；`ACCESS_TOKEN` 非空时创建任务必须携带 `X-OGS-Token`，否则 401；新增单 IP 频率限制与活跃任务上限。
 - **Demo 数据**：复制已验证任务 `adc5c4474a83` 与 Talent 快照到 `demo/`，共 25 个文件、124KB。
 - **本地 CLI**：`cli/bin.js` 支持 `--check`、`--demo/--live`、`--port/--host/--reload/--no-open`，自动创建 `.env` 并打开浏览器。
@@ -40,7 +40,7 @@
 修改  backend/config.py            APP_MODE / 限流 / 并发 / 回放配置
 修改  backend/main.py              模式控制、Demo 回放、任务解析、限流
 修改  backend/evolution/api.py     任务统计支持多个 TaskStore
-修改  frontend/index.html          模式横幅、Live 令牌输入
+修改  frontend/index.html          模式徽章、Live 令牌输入
 修改  frontend/app.js              模式启动、Demo 自动加载、令牌请求头
 修改  README.md / LICENSE / .env.example
 ```
@@ -53,7 +53,7 @@
 
 - **未实际部署**，也没有线上地址；需要用户提供 GitHub / Render / 模型服务凭据。
 - **npm 包未发布**，包名 `onegamestudio` 的可用性未核实（本轮无法访问 npm registry）；`npx onegamestudio` 目前不可用，本地用 `node cli/bin.js` 验证。
-- 未推送 GitHub 仓库；未验证真实 Live 模型端到端调用。
+- GitHub 已推送但仓库仍为 private，未转 public；未验证真实 Live 模型端到端调用（无用户凭据），只验证了缺密钥 503 与令牌 401。
 - 进程内限流只在单实例有效；多实例需要共享限流。
 - 岗位「启用角色」仍只影响展示与岗位选择，实际任务执行仍固定使用 `engineer`；自动接管属于后续工作。
 

@@ -1,7 +1,7 @@
 # OneGameStudio 开发交接文档
 
-> 生成时间：2026-10-24（阶段 9 完成后更新）
-> 仓库状态：分支 `main`，最新提交 `73dd5a2 完成了自动进化的`；阶段 9 的后端主体已包含在该提交中，前端、引擎补丁、测试与文档仍有未提交改动
+> 生成时间：2026-10-24（阶段 10 完成后更新）
+> 仓库状态：分支 `main`，最新提交 `8058ab3 完成了最初版本`，已推送 `origin/main`（仓库为 private）；工作区仅有 `backend/providers/__init__.py` 一处未提交改动
 > 本文描述的是**实际代码与实测结果**，未实现的功能统一放在「未完成模块」。
 
 ---
@@ -32,9 +32,9 @@ OneGameStudio 是一个轻量级「AI 游戏开发工作室」演示项目。
 | 模型调用 | OpenAI 兼容 HTTP（httpx）            | 真实模式；Mock 模式不联网                                                                                              |
 | 机械门禁 | Playwright（Chromium / 系统 Chrome） | 真实加载、按键、点击、状态读取                                                                                         |
 | 前端     | 原生 HTML + CSS + JS + Canvas 2D     | 无框架、无构建步骤                                                                                                     |
-| 测试     | pytest + pytest-asyncio              | 109 个用例                                                                                                             |
+| 测试     | pytest + pytest-asyncio              | 119 个用例                                                                                                             |
 
-Node.js（本机 v25.8.2）**当前不参与运行**：没有 `package.json`，前端由 FastAPI 直接托管。
+Node.js（本机 v25.8.2）**不参与服务运行**：前端由 FastAPI 直接托管；Node 仅用于 `cli/bin.js` 启动脚本与 npm 包入口。
 
 ### 2.2 核心公式
 
@@ -249,7 +249,7 @@ FAST：reviewing（PASS）→ completed（跳过 marketing）
 
 #### 3.11 Demo / Live 双模式与启动（阶段 10）
 
-- `APP_MODE=demo`（默认）：读取 `demo/tasks` 的预验证历史任务；页面顶部横幅明确标记 DEMO；
+- `APP_MODE=demo`（默认）：读取 `demo/tasks` 的预验证历史任务；顶部状态栏的 DEMO 徽章明确标记；
   WebSocket 先发空事件快照，再按 `DEMO_REPLAY_MS` 回放历史事件；`DEMO_READ_ONLY=true` 时创建任务返回 403。
 - `APP_MODE=live`：必须 `MOCK_MODE=false`、`LLM_MODEL`、服务端 `LLM_API_KEY` 同时存在，否则返回 503；
   `ACCESS_TOKEN` 非空时创建任务必须携带 `X-OGS-Token`，否则 401。
@@ -623,38 +623,23 @@ LLM_MODEL=...
 | 测试文件  | `test_api.py`(18) / `test_contract.py`(6) / `test_evolution.py`(21) / `test_gate.py`(9) / `test_harness.py`(14) / `test_modes.py`(6) / `test_sop.py`(6) / `test_talents.py`(9) / `test_versions.py`(5) / `test_vessel.py`(11) / `test_workflow.py`(12) |
 | 应用导入  | 通过（FastAPI `OneGameStudio` v0.10.0，`mock_mode=True`）                                                                                                                                                                                              |
 | HTTP 冒烟 | `/api/health`、`/`、`/style.css`、`/talent.js` 均 200                                                                                                                                                                                                  |
-| Git 状态  | `main`；远端 `origin` 指向私有的 `github.com/Lmliya/OneGameStudio`；阶段 9/10 改动均未提交、未推送                                                                                                                                                     |
+| Git 状态  | `main`；`origin` 指向私有的 `github.com/Lmliya/OneGameStudio`；阶段 9/10 已提交并推送（`8058ab3`），工作区仅 `backend/providers/__init__.py` 未提交                                                                                                    |
 | 手工验收  | 浏览器：SOP 下拉 / 六员工 / BALANCED 徽章 / Studio（提案、裁决、版本、指标）/ Game 预览全部通过，控制台无 JS 报错；HTTP 实跑 FAST 5 次 38.2s、BALANCED 8 次 50.4s、CREATIVE 9 次 62.4s（均为 Mock）                                                    |
-| 未验证项  | 真实 LLM 端到端、真实模型评估（live）、实际线上部署、npm 包发布、真实 GitHub 推送、多 worker 部署、npx 启动、预算并发压力测试                                                                                                                          |
+| 未验证项  | 真实 LLM 端到端、真实模型评估（live）、实际线上部署、npm 包发布、GitHub 转 public、多 worker 部署、npx 启动、预算并发压力测试                                                                                                                          |
 
 ### 交接时的 Git 信息
 
 ```text
 branch : main
-commit : 73dd5a2 完成了自动进化的
-status : M backend/workflow/engine.py
-         M frontend/app.js
-         M frontend/index.html
-         M frontend/office.js
-         M frontend/style.css
-         M talents/coo.yaml
-         M tests/test_api.py
-         M tests/test_evolution.py
-         M tests/test_harness.py
-         M tests/test_talents.py
-         M docs/HANDOFF.md
-         M docs/architecture.md
-         M docs/progress.md
-         ?? docs/conflict-protocol.md
-         ?? docs/fast-sop.md
-         ?? tests/test_sop.py
-         ?? tests/test_versions.py
+commit : 8058ab3 完成了最初版本
+remote : origin https://github.com/Lmliya/OneGameStudio.git（private，已推送）
+status : M backend/providers/__init__.py
 ```
 
-未做任何 `git add / commit / push`。
+本轮未执行 `git add / commit / push`；唯一未提交改动是 Live 缺密钥时的占位供应商。
 
 ---
 
 ## 12. 给下一个 Agent 的第一句话
 
-> 先读 `docs/HANDOFF.md`（本文）→ `docs/architecture.md` → `docs/harness.md` → `docs/talent-evolution.md` → `docs/conflict-protocol.md` → `docs/fast-sop.md` → `docs/progress.md`，然后跑 `uv run pytest -q` 确认 109 passed。阶段 6（Mini-6 Harness）、阶段 8（AI 员工自进化）与阶段 9（双角色冲突 / 三种 SOP / 不可变版本）均已完成，不要重做。改动前先读现有代码与文档，保持「状态由 Python 控制、费用不伪造、产物只增不删、安全边界不可被进化触碰」四条底线。
+> 先读 `docs/HANDOFF.md`（本文）→ `docs/architecture.md` → `docs/harness.md` → `docs/talent-evolution.md` → `docs/conflict-protocol.md` → `docs/fast-sop.md` → `docs/progress.md` → `docs/deployment.md` → `docs/demo.md`，然后跑 `uv run pytest -q` 确认 119 passed。阶段 6（Mini-6 Harness）、阶段 8（AI 员工自进化）、阶段 9（双角色冲突 / 三种 SOP / 不可变版本）与阶段 10（本地启动 CLI / Demo-Live 双模式 / 部署配置）均已完成，不要重做。改动前先读现有代码与文档，保持「状态由 Python 控制、费用不伪造、产物只增不删、安全边界不可被进化触碰」四条底线。

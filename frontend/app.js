@@ -791,21 +791,24 @@ el("reload-preview").addEventListener("click", () =>
 
 function renderMode(health) {
   const mode = health.mode || (health.mock_mode ? "demo" : "live");
-  const banner = el("mode-banner");
   const readOnly = mode === "demo" && Boolean(health.read_only);
-  if (banner) {
-    banner.classList.remove("hidden");
-    banner.classList.toggle("live", mode === "live");
+  const badge = el("mode-badge");
+  if (badge) {
     if (mode === "demo") {
-      banner.textContent = readOnly
-        ? "DEMO 模式 · 只读历史任务回放，不会调用真实模型，也不会产生费用"
-        : "DEMO 模式 · 历史任务回放；本地 Mock 运行不会调用真实模型";
+      badge.textContent = readOnly ? "DEMO 只读" : "DEMO";
+      badge.className = "badge badge-warn";
+      badge.title = readOnly
+        ? "Demo 模式：只读历史任务回放，不会调用真实模型，也不会产生费用"
+        : "Demo 模式：历史任务回放；本地 Mock 运行不会调用真实模型";
     } else if (health.live_ready) {
-      banner.textContent =
-        "LIVE 模式 · 调用真实模型；受访问令牌、并发、频率与预算限制";
+      badge.textContent = "LIVE";
+      badge.className = "badge badge-ok";
+      badge.title = "Live 模式：调用真实模型；受访问令牌、并发、频率与预算限制";
     } else {
-      banner.textContent =
-        "LIVE 模式未配置完成 · 需要服务端 LLM_API_KEY、LLM_MODEL 且 MOCK_MODE=false";
+      badge.textContent = "LIVE 未配置";
+      badge.className = "badge badge-danger";
+      badge.title =
+        "Live 模式未配置完成：需要服务端 LLM_API_KEY、LLM_MODEL 且 MOCK_MODE=false";
     }
   }
 

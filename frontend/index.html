@@ -8,7 +8,7 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230d0f17'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%237ee787'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%2358a6ff'/%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="/style.css?v=20261024g" />
+    <link rel="stylesheet" href="/style.css?v=20261024h" />
   </head>
   <body>
     <header class="topbar">
@@ -49,14 +49,15 @@
       </form>
 
       <div class="status-group">
+        <span id="mode-badge" class="badge badge-wait" title="运行模式"
+          >模式 —</span
+        >
         <span id="sop-badge" class="badge badge-wait">SOP --</span>
         <span id="conn" class="badge badge-wait">连接中…</span>
         <span id="task-status" class="badge badge-wait">空闲</span>
         <span id="task-id" class="task-id"></span>
       </div>
     </header>
-
-    <div id="mode-banner" class="mode-banner hidden"></div>
 
     <main class="layout">
       <section class="office panel">
@@ -140,7 +141,7 @@
     </footer>
 
     <script src="/office.js?v=20261024g"></script>
-    <script src="/app.js?v=20261024g"></script>
+    <script src="/app.js?v=20261024h"></script>
     <script src="/talent.js?v=20261024g"></script>
   </body>
 </html>
