@@ -32,7 +32,7 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="read_requirement",
         description="读取用户原始需求",
-        allowed_agents=frozenset({"coo"}),
+        allowed_agents=frozenset({"coo", "creative", "delivery"}),
     ),
     ToolSpec(
         name="write_prd",
@@ -40,9 +40,14 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         allowed_agents=frozenset({"coo"}),
     ),
     ToolSpec(
+        name="write_decision",
+        description="写入冲突决策 conflict_decision.json",
+        allowed_agents=frozenset({"coo"}),
+    ),
+    ToolSpec(
         name="read_prd",
         description="读取 PRD 作为上下文",
-        allowed_agents=frozenset({"engineer", "marketer"}),
+        allowed_agents=frozenset({"engineer", "marketer", "creative", "delivery"}),
     ),
     ToolSpec(
         name="write_game",
@@ -56,8 +61,8 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
     ),
     ToolSpec(
         name="read_game",
-        description="读取待审查的游戏代码",
-        allowed_agents=frozenset({"reviewer"}),
+        description="读取待审查或待参考的游戏代码",
+        allowed_agents=frozenset({"reviewer", "creative"}),
     ),
     ToolSpec(
         name="run_tests",
@@ -73,6 +78,16 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         name="write_marketing",
         description="写入营销素材 marketing_kit.md / marketing_kit.json",
         allowed_agents=frozenset({"marketer"}),
+    ),
+    ToolSpec(
+        name="write_creative",
+        description="写入创意提案 creative_proposal.json",
+        allowed_agents=frozenset({"creative"}),
+    ),
+    ToolSpec(
+        name="write_delivery",
+        description="写入交付评估 delivery_assessment.json",
+        allowed_agents=frozenset({"delivery"}),
     ),
 )
 

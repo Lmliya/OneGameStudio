@@ -19,8 +19,35 @@ PRD_JSON = """{
   "core_loop": ["移动", "吃食物", "变长"],
   "features": ["计分", "随机食物"],
   "controls": ["方向键"],
-  "win_condition": "获得高分", "lose_condition": "撞墙"
+  "win_condition": "获得高分", "lose_condition": "撞墙",
+  "conflict_decision": {
+    "decision": "simplify",
+    "summary": "创意建议可行，交付要求收敛范围",
+    "rationale": "保留核心反馈，同时控制实现复杂度",
+    "adopted_from": "both"
+  }
 }"""
+
+CREATIVE_JSON = json.dumps(
+    {
+        "innovation": "让背景随得分变化",
+        "player_value": "强化成长反馈",
+        "complexity": "low",
+        "priority": "high",
+        "rationale": "只改绘制层",
+    },
+    ensure_ascii=False,
+)
+DELIVERY_JSON = json.dumps(
+    {
+        "risk": "配色可能影响可读性",
+        "feasibility": "feasible",
+        "simplification": "只改背景色",
+        "priority": "medium",
+        "rationale": "改动局限在绘制层",
+    },
+    ensure_ascii=False,
+)
 
 GAME_HTML = "<html><body><canvas width='320' height='240'></canvas><script>var a=1</script></body></html>"
 GAME_JSON = (
@@ -58,13 +85,21 @@ class ScriptedProvider(BaseProvider):
 
     default_model = "scripted"
 
+    # 旧测试只关心主流程；新增总监视为默认可用，FAST 测试通过 calls 断言其未被调用
+    _DEFAULTS = {"creative_proposal": CREATIVE_JSON, "delivery_assessment": DELIVERY_JSON}
+
     def __init__(self, script: dict[str, list]) -> None:
         self._script = {k: list(v) for k, v in script.items()}
+        self.calls: list[str] = []
 
     async def complete(self, system, user, *, model, schema=None, max_tokens=None):
+        self.calls.append(schema or "")
         queue = self._script.get(schema or "", [])
         if not queue:
-            raise AssertionError(f"脚本中没有更多 '{schema}' 响应")
+            default = self._DEFAULTS.get(schema or "")
+            if default is None:
+                raise AssertionError(f"脚本中没有更多 '{schema}' 响应")
+            return ProviderResponse(text=default, model=model)
         item = queue.pop(0)
         if isinstance(item, Exception):
             raise item
@@ -76,11 +111,20 @@ class SlowProvider(BaseProvider):
 
     default_model = "slow"
 
+    _PAYLOADS = {
+        "prd": PRD_JSON,
+        "game": GAME_JSON,
+        "review": REVIEW_PASS_JSON,
+        "marketing": MARKETING_JSON,
+        "creative_proposal": CREATIVE_JSON,
+        "delivery_assessment": DELIVERY_JSON,
+    }
+
     async def complete(self, system, user, *, model, schema=None, max_tokens=None):
         import asyncio
 
         await asyncio.sleep(0.05)
-        return ProviderResponse(text=PRD_JSON, model=model)
+        return ProviderResponse(text=self._PAYLOADS[schema], model=model)
 
 
 def make_engine(tmp_path: Path, provider: BaseProvider, max_fix_rounds: int = 2):
@@ -114,6 +158,9 @@ async def test_full_flow_success_first_try(tmp_path: Path) -> None:
         "review.json",
         "marketing_kit.json",
         "marketing_kit.md",
+        "creative_proposal.json",
+        "delivery_assessment.json",
+        "conflict_decision.json",
     }
     task_dir = tmp_path / record.task_id
     for name in result.artifacts:
@@ -336,18 +383,19 @@ async def test_stage_min_seconds_paces_each_agent(tmp_path: Path) -> None:
     result = await engine.start(record.task_id)
     elapsed = time.perf_counter() - started
 
-    # 四个阶段：COO / Engineer / Reviewer / Marketer
+    # 五个阶段：Conflict（并行） / COO / Engineer / Reviewer / Marketer
     assert result.status is TaskStatus.COMPLETED
-    assert elapsed >= 0.12
+    assert elapsed >= 0.15
 
     durations = []
-    active_at = None
+    active_at: dict[str, object] = {}
     for event in result.events:
         if event.type.value != "agent.status_changed" or not event.agent:
             continue
         if event.status in {"working", "reviewing", "fixing"}:
-            active_at = event.created_at
-        elif event.status == "completed" and active_at is not None:
-            durations.append((event.created_at - active_at).total_seconds())
-            active_at = None
+            active_at[event.agent] = event.created_at
+        elif event.status == "completed" and event.agent in active_at:
+            durations.append(
+                (event.created_at - active_at.pop(event.agent)).total_seconds()
+            )
     assert durations and min(durations) >= 0.02

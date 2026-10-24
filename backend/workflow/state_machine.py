@@ -20,6 +20,8 @@ ALLOWED_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
         {
             TaskStatus.FIXING,
             TaskStatus.MARKETING,
+            # FAST 不含营销阶段，审查通过后直接交付
+            TaskStatus.COMPLETED,
             TaskStatus.NEEDS_ATTENTION,
             TaskStatus.FAILED,
             TaskStatus.CANCELLED,

@@ -23,6 +23,10 @@ class EventType(str, Enum):
     FIX_REQUESTED = "fix.requested"
     REVIEW_COMPLETED = "review.completed"
     BUDGET_UPDATED = "budget.updated"
+    # 阶段 9：SOP 与冲突协作
+    SOP_SELECTED = "sop.selected"
+    CONFLICT_OPINION = "conflict.opinion"
+    CONFLICT_RESOLVED = "conflict.resolved"
     TASK_COMPLETED = "task.completed"
     TASK_FAILED = "task.failed"
     TASK_CANCELLED = "task.cancelled"

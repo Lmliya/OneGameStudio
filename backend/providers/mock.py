@@ -121,6 +121,47 @@ _PRIMARY_OUTPUTS: dict[str, dict] = {
     },
 }
 
+_CREATIVE_PROPOSAL = {
+    "innovation": "让背景色随得分阶段变化，强化成长反馈",
+    "player_value": "玩家能直观看到自己变强，愿意再开一局",
+    "complexity": "low",
+    "priority": "high",
+    "rationale": "只改 Canvas 绘制颜色，不新增玩法系统，风险可控",
+}
+
+_CREATIVE_REVISION = {
+    "innovation": "保留换色，但限制为三档颜色，避免干扰食物辨识",
+    "player_value": "保留成长反馈，同时不牺牲可读性",
+    "complexity": "low",
+    "priority": "medium",
+    "rationale": "接受交付总监关于对比度的挑战，用更小的改动达成同样目标",
+}
+
+_DELIVERY_ASSESSMENT = {
+    "risk": "背景与食物颜色过近会影响可读性",
+    "feasibility": "feasible",
+    "simplification": "只调整背景与网格颜色，不改玩法参数",
+    "priority": "medium",
+    "rationale": "改动局限在绘制层，机械门禁仍可验证核心玩法",
+}
+
+# CREATIVE 下交付总监收到明确“挑战”上下文时给出风险判断，触发创意的一轮修订
+_DELIVERY_CHALLENGE = {
+    "risk": "高对比度配色可能让食物与蛇身难以区分，影响可玩性",
+    "feasibility": "risky",
+    "simplification": "限制配色档位，并保留高对比度的食物颜色",
+    "priority": "high",
+    "rationale": "创意方向可行，但需要收敛颜色数量并优先保证可读性",
+}
+
+_CONFLICT_DECISION = {
+    "decision": "simplify",
+    "summary": "创意总监提出配色反馈，交付总监要求收敛颜色数量以控制风险",
+    "rationale": "采纳简化后的方案：保留成长反馈，同时优先保证食物与蛇身的可辨识度",
+    "adopted_from": "both",
+}
+
+
 _REVIEW_FAIL = {
     "verdict": "ITERATE",
     "issues": [
@@ -275,9 +316,32 @@ class MockProvider(BaseProvider):
             payload = dict(_PRIMARY_OUTPUTS["game"])
             if "审查意见" in user:
                 payload["notes"] = "已按审查意见补充计分与结束提示"
+            if "历史版本参考代码" in user:
+                payload["notes"] = "在历史版本基础上做增量修改"
             return payload
         if schema == "marketing":
             return json.loads(json.dumps(MARKETING_PAYLOAD))
-        return json.loads(
+        if schema == "creative_proposal":
+            source = (
+                _CREATIVE_REVISION
+                if "唯一一轮修订" in user
+                else _CREATIVE_PROPOSAL
+            )
+            return json.loads(json.dumps(source))
+        if schema == "delivery_assessment":
+            source = (
+                _DELIVERY_CHALLENGE
+                if "交付总监挑战" in user
+                else _DELIVERY_ASSESSMENT
+            )
+            return json.loads(json.dumps(source))
+
+        payload = json.loads(
             json.dumps(_PRIMARY_OUTPUTS.get(schema or "prd", _PRIMARY_OUTPUTS["prd"]))
         )
+        # COO 收到双方意见时必须给出可审计的裁决
+        if "创意总监意见" in user and "交付总监意见" in user:
+            payload["conflict_decision"] = json.loads(
+                json.dumps(_CONFLICT_DECISION)
+            )
+        return payload

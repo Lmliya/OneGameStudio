@@ -8,9 +8,14 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from backend.models.sop import ConflictDecision
+
 
 class GamePRD(BaseModel):
-    """COO 产出：结构化的游戏需求文档。"""
+    """COO 产出：结构化的游戏需求文档。
+
+    BALANCED / CREATIVE 下必须附带 conflict_decision；FAST 下为 None。
+    """
 
     title: str
     genre: str
@@ -19,6 +24,27 @@ class GamePRD(BaseModel):
     controls: list[str] = Field(min_length=1)
     win_condition: str
     lose_condition: str
+    conflict_decision: ConflictDecision | None = None
+
+
+class CreativeProposal(BaseModel):
+    """Creative Director 产出：最重要的创新建议及其价值与成本。"""
+
+    innovation: str = Field(min_length=1, description="最重要的创新建议")
+    player_value: str = Field(min_length=1, description="对玩家的价值")
+    complexity: Literal["low", "medium", "high"]
+    priority: Literal["high", "medium", "low"]
+    rationale: str = Field(min_length=1, description="提出该建议的依据")
+
+
+class DeliveryAssessment(BaseModel):
+    """Delivery Director 产出：最大交付风险与简化建议。"""
+
+    risk: str = Field(min_length=1, description="最大交付风险")
+    feasibility: Literal["feasible", "risky", "infeasible"]
+    simplification: str = Field(min_length=1, description="简化建议")
+    priority: Literal["high", "medium", "low"]
+    rationale: str = Field(min_length=1, description="提出该判断的依据")
 
 
 class GameArtifact(BaseModel):
@@ -131,4 +157,6 @@ OUTPUT_SCHEMAS: dict[str, type[BaseModel]] = {
     "game": GameArtifact,
     "review": ReviewReport,
     "marketing": MarketingKit,
+    "creative_proposal": CreativeProposal,
+    "delivery_assessment": DeliveryAssessment,
 }

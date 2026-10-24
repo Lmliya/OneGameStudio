@@ -1,7 +1,7 @@
 # OneGameStudio 开发交接文档
 
-> 生成时间：2026-10-24
-> 仓库状态：分支 `main`，最新提交 `dc4e17a 完成了6-harness`（与 `origin/main` 同步）
+> 生成时间：2026-10-24（阶段 8 完成后更新）
+> 仓库状态：分支 `main`，最新提交 `ec70e94 补充跨对话交接文档并同步阶段6状态说明`；阶段 8 改动未提交
 > 本文描述的是**实际代码与实测结果**，未实现的功能统一放在「未完成模块」。
 
 ---
@@ -15,7 +15,7 @@ OneGameStudio 是一个轻量级「AI 游戏开发工作室」演示项目。
 - 输出：可运行的**单文件 HTML5 游戏**、机械门禁报告、AI 审查报告、营销素材（JSON + Markdown）。
 - 展示：浏览器里的像素办公室 + 右侧驾驶舱，实时显示员工状态、事件流、游戏预览。
 
-当前已有能力：完整工作流、双层审查与自动修复、隔离预览、实时事件推送、六项运行保障机制（Mini-6 Harness）。
+当前已有能力：完整工作流、双层审查与自动修复、隔离预览、实时事件推送、六项运行保障机制（Mini-6 Harness）、AI 员工自进化（版本库 / 经验库 / 提案 / 回归评估 / 审批 / 回滚）。
 
 ---
 
@@ -23,16 +23,16 @@ OneGameStudio 是一个轻量级「AI 游戏开发工作室」演示项目。
 
 ### 2.1 技术栈（均已在 `pyproject.toml` 中声明）
 
-| 层 | 技术 | 说明 |
-| --- | --- | --- |
-| 运行时 | Python >= 3.12（本机 3.13.9） | 包管理用 `uv`（本机 0.13.4） |
-| Web | FastAPI + Uvicorn | API、WebSocket、静态文件托管 |
-| 数据模型 | Pydantic v2 + pydantic-settings | 输入输出契约、任务记录、配置 |
-| 配置 | `.env` + 环境变量 | 全部可调参数集中在 [config.py](file:///Users/lmliyascarlet/Desktop/项目/OneManCompany/OneGameStudio/backend/config.py) |
-| 模型调用 | OpenAI 兼容 HTTP（httpx） | 真实模式；Mock 模式不联网 |
-| 机械门禁 | Playwright（Chromium / 系统 Chrome） | 真实加载、按键、点击、状态读取 |
-| 前端 | 原生 HTML + CSS + JS + Canvas 2D | 无框架、无构建步骤 |
-| 测试 | pytest + pytest-asyncio | 78 个用例 |
+| 层       | 技术                                 | 说明                                                                                                                   |
+| -------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| 运行时   | Python >= 3.12（本机 3.13.9）        | 包管理用 `uv`（本机 0.13.4）                                                                                           |
+| Web      | FastAPI + Uvicorn                    | API、WebSocket、静态文件托管                                                                                           |
+| 数据模型 | Pydantic v2 + pydantic-settings      | 输入输出契约、任务记录、配置                                                                                           |
+| 配置     | `.env` + 环境变量                    | 全部可调参数集中在 [config.py](file:///Users/lmliyascarlet/Desktop/项目/OneManCompany/OneGameStudio/backend/config.py) |
+| 模型调用 | OpenAI 兼容 HTTP（httpx）            | 真实模式；Mock 模式不联网                                                                                              |
+| 机械门禁 | Playwright（Chromium / 系统 Chrome） | 真实加载、按键、点击、状态读取                                                                                         |
+| 前端     | 原生 HTML + CSS + JS + Canvas 2D     | 无框架、无构建步骤                                                                                                     |
+| 测试     | pytest + pytest-asyncio              | 97 个用例                                                                                                              |
 
 Node.js（本机 v25.8.2）**当前不参与运行**：没有 `package.json`，前端由 FastAPI 直接托管。
 
@@ -47,33 +47,35 @@ Realtime = EventBus（进程内）+ WebSocket
 
 ### 2.3 模块地图
 
-| 路径 | 职责 |
-| --- | --- |
-| `backend/main.py` | FastAPI 入口：任务 API、取消、产物读取、WebSocket、隔离预览、静态托管 |
-| `backend/config.py` | 全局 `Settings`，环境变量映射 |
-| `backend/models/contract.py` | `TaskStatus`（10 态）、`TERMINAL_STATUSES`、`TaskRecord`、`TaskCreateRequest` |
-| `backend/models/events.py` | `EventType`、`AgentStatus`、`TokenUsage`、`TraceEvent`、`Tracer` |
-| `backend/models/talent.py` | `TalentSpec`（id/name/role/system_prompt/model/allowed_tools/output_schema） |
-| `backend/schemas.py` | 四个输出契约 + 门禁报告契约 + `OUTPUT_SCHEMAS` 注册表 |
-| `backend/talents.py` | 加载并校验 `talents/*.yaml`（工具、schema、角色授权） |
-| `backend/tools.py` | Harness 2：9 个工具显式注册表、`ROLE_TOOLS`、加载期与运行时双重校验 |
-| `backend/budget.py` | Harness 5：`TaskBudget`、`BudgetGuard`、价格表解析 |
-| `backend/core/vessel.py` | 员工执行容器：预算检查、限并发、有限重试、契约校验、调用轨迹 |
-| `backend/providers/base.py` | `BaseProvider` / `ProviderResponse` / `usage_source` |
-| `backend/providers/mock.py` | 离线确定性 Mock（内置贪吃蛇 HTML，审查默认 ITERATE → PASS） |
-| `backend/providers/openai.py` | OpenAI 兼容真实调用，支持 `max_tokens` |
-| `backend/gate/mechanical.py` | Harness 3：Playwright 机械门禁与 PRD 验收映射 |
-| `backend/workflow/state_machine.py` | `ALLOWED_TRANSITIONS` + `assert_transition` |
-| `backend/workflow/engine.py` | Harness 1/2/4/6 的编排：四阶段 + 修复循环 + 取消 + 事件落盘与广播 |
-| `backend/store.py` | 任务持久化：`output/{task_id}/`、快照、活跃任务查询 |
-| `backend/bus.py` | 进程内 `EventBus`，每任务 `asyncio.Queue(256)`，满则丢最旧 |
-| `backend/marketing.py` | 营销 Markdown 渲染 + 编造数据正则拦截 |
-| `frontend/index.html` | 驾驶舱骨架（顶部 / 左办公室 / 右四标签 / 底部事件条） |
-| `frontend/style.css` | 像素风：硬边框、阶梯阴影、无圆角、响应式单列 |
-| `frontend/office.js` | Canvas 2D 像素办公室，4 员工动画由事件驱动 |
-| `frontend/app.js` | WebSocket、快照恢复、产物渲染、版本切换、隔离预览 |
-| `talents/*.yaml` | COO / Engineer / Reviewer / Marketer 四份配置 |
-| `tests/*.py` | 7 个测试文件，78 个用例 |
+| 路径                                | 职责                                                                          |
+| ----------------------------------- | ----------------------------------------------------------------------------- |
+| `backend/main.py`                   | FastAPI 入口：任务 API、取消、产物读取、WebSocket、隔离预览、静态托管         |
+| `backend/config.py`                 | 全局 `Settings`，环境变量映射                                                 |
+| `backend/models/contract.py`        | `TaskStatus`（10 态）、`TERMINAL_STATUSES`、`TaskRecord`、`TaskCreateRequest` |
+| `backend/models/events.py`          | `EventType`、`AgentStatus`、`TokenUsage`、`TraceEvent`、`Tracer`              |
+| `backend/models/talent.py`          | `TalentSpec`（id/name/role/system_prompt/model/allowed_tools/output_schema）  |
+| `backend/schemas.py`                | 四个输出契约 + 门禁报告契约 + `OUTPUT_SCHEMAS` 注册表                         |
+| `backend/talents.py`                | 加载并校验 `talents/*.yaml`（工具、schema、角色授权）                         |
+| `backend/tools.py`                  | Harness 2：9 个工具显式注册表、`ROLE_TOOLS`、加载期与运行时双重校验           |
+| `backend/budget.py`                 | Harness 5：`TaskBudget`、`BudgetGuard`、价格表解析                            |
+| `backend/evolution/`                | 阶段 8：Talent 版本库、经验库、提案、固定回归评估、审批/回滚 API              |
+| `backend/core/vessel.py`            | 员工执行容器：预算检查、限并发、有限重试、契约校验、调用轨迹                  |
+| `backend/providers/base.py`         | `BaseProvider` / `ProviderResponse` / `usage_source`                          |
+| `backend/providers/mock.py`         | 离线确定性 Mock（内置贪吃蛇 HTML，审查默认 ITERATE → PASS）                   |
+| `backend/providers/openai.py`       | OpenAI 兼容真实调用，支持 `max_tokens`                                        |
+| `backend/gate/mechanical.py`        | Harness 3：Playwright 机械门禁与 PRD 验收映射                                 |
+| `backend/workflow/state_machine.py` | `ALLOWED_TRANSITIONS` + `assert_transition`                                   |
+| `backend/workflow/engine.py`        | Harness 1/2/4/6 的编排：四阶段 + 修复循环 + 取消 + 事件落盘与广播             |
+| `backend/store.py`                  | 任务持久化：`output/{task_id}/`、快照、活跃任务查询                           |
+| `backend/bus.py`                    | 进程内 `EventBus`，每任务 `asyncio.Queue(256)`，满则丢最旧                    |
+| `backend/marketing.py`              | 营销 Markdown 渲染 + 编造数据正则拦截                                         |
+| `frontend/index.html`               | 驾驶舱骨架（顶部 / 左办公室 / 右五标签 / 底部事件条）                         |
+| `frontend/style.css`                | 像素风：硬边框、阶梯阴影、无圆角、响应式单列                                  |
+| `frontend/office.js`                | Canvas 2D 像素办公室，4 员工动画由事件驱动                                    |
+| `frontend/app.js`                   | WebSocket、快照恢复、产物渲染、版本切换、隔离预览                             |
+| `frontend/talent.js`                | Talent 面板：版本、经验、提案、评估、批准与回滚                               |
+| `talents/*.yaml`                    | COO / Engineer / Reviewer / Marketer 四份配置                                 |
+| `tests/*.py`                        | 8 个测试文件，97 个用例                                                       |
 
 ### 2.4 数据流
 
@@ -99,28 +101,33 @@ WorkflowEngine
 
 每个状态变化 / 员工状态 / 工具调用 / 产物 / 预算：
    TraceEvent → 追加到 record.events → 写入 task.json → EventBus 广播 → WebSocket 推送
+
+自进化（与任务流程解耦，通过 API / 前端 Talent 面板触发）：
+   任务终态 → 提取经验 → 诊断漏检 → 提案 → 固定回归评估 → 用户批准 → active.json 切换
+   WorkflowEngine 每次调用把实际版本写入 task.json.talent_versions
 ```
 
 ---
 
 ## 3. 已完成模块（有代码或测试可验证）
 
-| 阶段 | 内容 | 验证方式 |
-| --- | --- | --- |
-| 1 | FastAPI 骨架、提交需求、返回 task_id | `tests/test_api.py` |
-| 2 | Talent YAML + Vessel 执行 + Mock/真实 Provider | `tests/test_vessel.py` |
-| 3 | 机械门禁 + AI 审查 + 自动修复循环 | `tests/test_gate.py`、`tests/test_workflow.py` |
-| 4 | Marketer 营销素材 + 真实性约束 | `tests/test_workflow.py`、`backend/marketing.py` |
-| 5 | 像素办公室、驾驶舱、WebSocket、隔离预览 | `tests/test_api.py` + 浏览器手工验证 |
-| 6 | Mini-6 Harness（六项机制） | `tests/test_harness.py`、`docs/harness.md` |
+| 阶段 | 内容                                           | 验证方式                                              |
+| ---- | ---------------------------------------------- | ----------------------------------------------------- |
+| 1    | FastAPI 骨架、提交需求、返回 task_id           | `tests/test_api.py`                                   |
+| 2    | Talent YAML + Vessel 执行 + Mock/真实 Provider | `tests/test_vessel.py`                                |
+| 3    | 机械门禁 + AI 审查 + 自动修复循环              | `tests/test_gate.py`、`tests/test_workflow.py`        |
+| 4    | Marketer 营销素材 + 真实性约束                 | `tests/test_workflow.py`、`backend/marketing.py`      |
+| 5    | 像素办公室、驾驶舱、WebSocket、隔离预览        | `tests/test_api.py` + 浏览器手工验证                  |
+| 6    | Mini-6 Harness（六项机制）                     | `tests/test_harness.py`、`docs/harness.md`            |
+| 8    | AI 员工自进化（版本/经验/提案/评估/审批/回滚） | `tests/test_evolution.py`、`docs/talent-evolution.md` |
 
 ### 3.1 四名 AI 员工
 
-| 员工 | Talent 文件 | 角色 | 工具（授权表来源 `backend/tools.py`） | 输出契约 |
-| --- | --- | --- | --- | --- |
-| COO | `talents/coo.yaml` | 需求分析 | `read_requirement`、`write_prd` | `prd` → `GamePRD` |
-| Engineer | `talents/engineer.yaml` | 游戏开发 | `read_prd`、`write_game`、`read_review` | `game` → `GameArtifact` |
-| Reviewer | `talents/reviewer.yaml` | 质量审查 | `read_game`、`run_tests`、`write_review` | `review` → `ReviewReport` |
+| 员工     | Talent 文件             | 角色     | 工具（授权表来源 `backend/tools.py`）        | 输出契约                     |
+| -------- | ----------------------- | -------- | -------------------------------------------- | ---------------------------- |
+| COO      | `talents/coo.yaml`      | 需求分析 | `read_requirement`、`write_prd`              | `prd` → `GamePRD`            |
+| Engineer | `talents/engineer.yaml` | 游戏开发 | `read_prd`、`write_game`、`read_review`      | `game` → `GameArtifact`      |
+| Reviewer | `talents/reviewer.yaml` | 质量审查 | `read_game`、`run_tests`、`write_review`     | `review` → `ReviewReport`    |
 | Marketer | `talents/marketer.yaml` | 营销素材 | `read_prd`、`read_review`、`write_marketing` | `marketing` → `MarketingKit` |
 
 - 员工数量：**4 人**，没有更多角色。
@@ -177,20 +184,31 @@ pending → planning → coding → reviewing → [fixing → reviewing] × ≤2
 
 ### 3.7 Mini-6 Harness（阶段 6，已完成）
 
-| Harness | 实现位置 | 要点 |
-| --- | --- | --- |
-| 1 Task Contract | `models/contract.py`、`workflow/state_machine.py` | Pydantic 强校验、10 态状态机、终态保护、错误分层 |
-| 2 Tool Policy | `tools.py`、`talents.py`、`engine._use_tool` | 9 个显式工具、角色授权、双重校验、无 shell 能力 |
-| 3 Quality Gate | `gate/mechanical.py`、`engine._review` | 机械断言 + AI 审查 + 后端强制裁决 |
-| 4 Recovery | `vessel.py`、`engine.cancel` | 异常重试（超时不重试）、取消、终态不可重跑、产物保留 |
-| 5 Budget Guard | `budget.py`、`vessel.py` | 单任务预算、70% 降级、100% 阻断、限并发、未知费用标记 |
-| 6 Event Trace | `models/events.py`、`engine._call` | 统一字段 `model/duration_ms/token_usage/result/error`，3 类新事件 |
+| Harness         | 实现位置                                          | 要点                                                              |
+| --------------- | ------------------------------------------------- | ----------------------------------------------------------------- |
+| 1 Task Contract | `models/contract.py`、`workflow/state_machine.py` | Pydantic 强校验、10 态状态机、终态保护、错误分层                  |
+| 2 Tool Policy   | `tools.py`、`talents.py`、`engine._use_tool`      | 9 个显式工具、角色授权、双重校验、无 shell 能力                   |
+| 3 Quality Gate  | `gate/mechanical.py`、`engine._review`            | 机械断言 + AI 审查 + 后端强制裁决                                 |
+| 4 Recovery      | `vessel.py`、`engine.cancel`                      | 异常重试（超时不重试）、取消、终态不可重跑、产物保留              |
+| 5 Budget Guard  | `budget.py`、`vessel.py`                          | 单任务预算、70% 降级、100% 阻断、限并发、未知费用标记             |
+| 6 Event Trace   | `models/events.py`、`engine._call`                | 统一字段 `model/duration_ms/token_usage/result/error`，3 类新事件 |
 
 详细边界与验收证据见 [harness.md](file:///Users/lmliyascarlet/Desktop/项目/OneManCompany/OneGameStudio/docs/harness.md)。
 
-### 3.8 配置项（真实存在）
+### 3.8 AI 员工自进化（阶段 8）
 
-见 [.env.example](file:///Users/lmliyascarlet/Desktop/项目/OneManCompany/OneGameStudio/.env.example)：`MOCK_MODE`、`LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`、`REQUEST_TIMEOUT_SECONDS`、`STAGE_MIN_SECONDS`、`PROVIDER_MAX_RETRIES`、`PROVIDER_RETRY_BACKOFF_SECONDS`、`BUDGET_USD`、`BUDGET_SOFT_RATIO`、`LIGHT_MODEL`、`MAX_OUTPUT_TOKENS`、`MODEL_PRICES`、`MAX_CONCURRENT_CALLS`；另有 `MAX_FIX_ROUNDS`、`TALENTS_DIR`、`OUTPUT_DIR`（代码默认值，未写进 `.env.example`）。
+完整说明见 [talent-evolution.md](file:///Users/lmliyascarlet/Desktop/项目/OneManCompany/OneGameStudio/docs/talent-evolution.md)。
+
+- **版本库**：`output/evolution/talents/{name}/versions/v{n}.json` 只读；`active.json` 决定启用版本；启动时从 YAML 播种 v1，幂等。
+- **经验库**：`candidate / verified / rejected`；`verified` 必须有可追溯证据；门禁失败自动生成 verified，审查问题生成 candidate。
+- **提案**：只接受同员工的 verified 经验；只允许改 `prompt` / `checklist`；当前实现是规则型，prompt 不变、只追加 checklist。
+- **评估**：四角色各有固定回归用例（Reviewer 5 条、其余各 4 条），阈值写死（检出率 ≥0.9、不低于基线、误报 ≤0.1、Token ≤2.0x）；`engine=mock` 明确标注模拟。
+- **审批与回滚**：未评估或评估失败不能批准；启用时校验安全字段与基线一致；任意非候选版本可回滚并写审计。
+- **运行时**：`Vessel` 使用启用版本，`TaskRecord.talent_versions` 记录每次 Run 实际使用的版本（如 `reviewer@v2`）。
+
+### 3.9 配置项（真实存在）
+
+见 [.env.example](file:///Users/lmliyascarlet/Desktop/项目/OneManCompany/OneGameStudio/.env.example)：`MOCK_MODE`、`LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`、`REQUEST_TIMEOUT_SECONDS`、`STAGE_MIN_SECONDS`、`PROVIDER_MAX_RETRIES`、`PROVIDER_RETRY_BACKOFF_SECONDS`、`BUDGET_USD`、`BUDGET_SOFT_RATIO`、`LIGHT_MODEL`、`MAX_OUTPUT_TOKENS`、`MODEL_PRICES`、`MAX_CONCURRENT_CALLS`；另有 `MAX_FIX_ROUNDS`、`TALENTS_DIR`、`OUTPUT_DIR`、`EVOLUTION_DIR`（代码默认值 `output/evolution`，未写进 `.env.example`）。
 
 ---
 
@@ -198,7 +216,7 @@ pending → planning → coding → reviewing → [fixing → reviewing] × ≤2
 
 以下内容**当前代码中没有任何实现**，不要按已实现对待：
 
-1. **AI 员工经验积累与自进化**：没有经验库、反思、提示词自动改写、角色能力成长。`TalentSpec` 只有静态字段。
+1. **真实模型评估（live 引擎）**：阶段 8 的自进化评估只实现 `engine=mock` 的确定性回归；`MOCK_MODE=false` 时服务层会明确报错，不会用模拟结果冒充真实评测。提示词自动改写也未实现（当前提案只追加 checklist）。
 2. **双角色冲突协作与极速 SOP**：没有角色间辩论、冲突裁决、SOP 编排器；当前是固定串行流程。
 3. **npx 启动与线上部署**：没有 `package.json`、没有容器化、没有反向代理/域名/TLS 配置，也没有多进程部署方案。
 4. **Project / Run 领域模型**：代码里没有 `Project`、`Run` 实体，只有 `TaskRecord`（一次需求即一个 task）。多任务归组、项目级历史、跨任务统计均不存在。
@@ -213,18 +231,22 @@ pending → planning → coding → reviewing → [fixing → reviewing] × ≤2
 
 ## 5. 关键架构决策
 
-| 决策 | 原因与后果 |
-| --- | --- |
-| 用 Python 状态机掌握流程，模型只产出内容 | 防止模型自由跳步；非法迁移会直接抛错。代价是流程固定、扩展新阶段需改代码。 |
-| Employee = Talent(YAML) + Vessel | 角色是纯数据，可单独测试与替换模型；`Vessel` 统一负责超时、重试、预算、契约校验。 |
-| 双层审查，后端做最终裁决 | 机械门禁只信真实浏览器行为，AI 只做语义补充；避免「AI 说通过就通过」。代价是门禁依赖本机浏览器。 |
-| 文件系统即真相，`task.json` 是唯一状态源 | 事件先写 `task.json` 再广播，刷新/重连可用快照完整恢复；无需数据库，便于黑客松演示。代价是不支持多 worker。 |
-| 生成游戏只在独立目录落盘，隔离预览执行 | 生成代码视为不可信；CSP + iframe `sandbox`（无 same-origin）阻止访问主站资源。 |
-| 不引入 LangChain / React / Vue / Redis / PostgreSQL / Docker | 降低复杂度与演示环境依赖，全部用原生能力实现。 |
-| 模型名与价格全部配置化 | 避免硬编码过时模型；无价格时费用标记 `unknown`，不伪造为 0。 |
-| Mock 模式一等公民 | 无 API Key 也能完整演示与跑测试；Mock 输出结构合法，审查默认 ITERATE → PASS，展示修复闭环。 |
-| 阶段最少 6 秒，动画独占 | 让像素办公室动画可读；时长由后端控制，前端不做假动画。 |
-| 预算用锁 + 信号量限制并发 | 检查与调用之间存在时间窗，串行化记账 + 限并发把超额控制在一次调用内。 |
+| 决策                                                         | 原因与后果                                                                                                  |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| 用 Python 状态机掌握流程，模型只产出内容                     | 防止模型自由跳步；非法迁移会直接抛错。代价是流程固定、扩展新阶段需改代码。                                  |
+| Employee = Talent(YAML) + Vessel                             | 角色是纯数据，可单独测试与替换模型；`Vessel` 统一负责超时、重试、预算、契约校验。                           |
+| 双层审查，后端做最终裁决                                     | 机械门禁只信真实浏览器行为，AI 只做语义补充；避免「AI 说通过就通过」。代价是门禁依赖本机浏览器。            |
+| 文件系统即真相，`task.json` 是唯一状态源                     | 事件先写 `task.json` 再广播，刷新/重连可用快照完整恢复；无需数据库，便于黑客松演示。代价是不支持多 worker。 |
+| 生成游戏只在独立目录落盘，隔离预览执行                       | 生成代码视为不可信；CSP + iframe `sandbox`（无 same-origin）阻止访问主站资源。                              |
+| 不引入 LangChain / React / Vue / Redis / PostgreSQL / Docker | 降低复杂度与演示环境依赖，全部用原生能力实现。                                                              |
+| 模型名与价格全部配置化                                       | 避免硬编码过时模型；无价格时费用标记 `unknown`，不伪造为 0。                                                |
+| Mock 模式一等公民                                            | 无 API Key 也能完整演示与跑测试；Mock 输出结构合法，审查默认 ITERATE → PASS，展示修复闭环。                 |
+| 阶段最少 6 秒，动画独占                                      | 让像素办公室动画可读；时长由后端控制，前端不做假动画。                                                      |
+| 预算用锁 + 信号量限制并发                                    | 检查与调用之间存在时间窗，串行化记账 + 限并发把超额控制在一次调用内。                                       |
+| Talent 版本只读 + `active.json` 指针切换                     | 回滚只移动指针，不复制内容；历史版本永不丢，启用/回滚都有审计。                                             |
+| 提案只追加 checklist，不改写 prompt                          | 来源可追溯、token 增长可控；提示词级改写需要真实模型对比评估，本阶段不伪造。                                |
+| 验收阈值写死在代码里                                         | 防止「先看结果再调标准」；提案与模型无权修改阈值。                                                          |
+| 真实评估未接入时明确报错                                     | 宁可拒绝，也不用 mock 结果冒充真实模型评测。                                                                |
 
 ---
 
@@ -232,17 +254,31 @@ pending → planning → coding → reviewing → [fixing → reviewing] × ≤2
 
 服务默认 `http://127.0.0.1:8000`。所有响应均为 JSON，除非注明。
 
-| 方法 | 路径 | 请求 | 响应 |
-| --- | --- | --- | --- |
-| GET | `/api/health` | — | `{"status":"ok","mock_mode":true\|false}` |
-| POST | `/api/tasks` | `{"requirement": "非空字符串"}` | `202` + `TaskRecord`；同一需求有活跃任务时 `409`（`detail` 含 `task_id`、`status`） |
-| GET | `/api/tasks/{task_id}` | — | `TaskRecord`；非法 id 或不存在 → `404` |
-| POST | `/api/tasks/{task_id}/cancel` | — | `202` + `TaskRecord`；终态任务 → `409` |
-| GET | `/api/tasks/{task_id}/artifacts` | — | `{文件名: 文件内容}`（只含已登记产物） |
-| GET | `/api/tasks/{task_id}/artifacts/{filename}` | 路径含子目录，如 `history/index.v1.html` | `text/plain`；不在白名单或不存在 → `404` |
-| GET | `/api/tasks/{task_id}/history` | — | `["history/index.v1.html", ...]`，按名称排序 |
-| GET | `/preview/{task_id}/{filename}` | 仅 `index.html`、`history/index.v{n}.html` | `text/html` + CSP/nosniff/no-store；否则 `404` |
-| WS | `/ws/tasks/{task_id}` | — | 首帧 `{"type":"task.snapshot","task": {...}}`，之后为事件消息；空闲 20s 发 `ping`；非法/未知任务关闭码 `4404` |
+| 方法     | 路径                                        | 请求                                       | 响应                                                                                                          |
+| -------- | ------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| GET      | `/api/health`                               | —                                          | `{"status":"ok","mock_mode":true\|false}`                                                                     |
+| POST     | `/api/tasks`                                | `{"requirement": "非空字符串"}`            | `202` + `TaskRecord`；同一需求有活跃任务时 `409`（`detail` 含 `task_id`、`status`）                           |
+| GET      | `/api/tasks/{task_id}`                      | —                                          | `TaskRecord`；非法 id 或不存在 → `404`                                                                        |
+| POST     | `/api/tasks/{task_id}/cancel`               | —                                          | `202` + `TaskRecord`；终态任务 → `409`                                                                        |
+| GET      | `/api/tasks/{task_id}/artifacts`            | —                                          | `{文件名: 文件内容}`（只含已登记产物）                                                                        |
+| GET      | `/api/tasks/{task_id}/artifacts/{filename}` | 路径含子目录，如 `history/index.v1.html`   | `text/plain`；不在白名单或不存在 → `404`                                                                      |
+| GET      | `/api/tasks/{task_id}/history`              | —                                          | `["history/index.v1.html", ...]`，按名称排序                                                                  |
+| GET      | `/preview/{task_id}/{filename}`             | 仅 `index.html`、`history/index.v{n}.html` | `text/html` + CSP/nosniff/no-store；否则 `404`                                                                |
+| WS       | `/ws/tasks/{task_id}`                       | —                                          | 首帧 `{"type":"task.snapshot","task": {...}}`，之后为事件消息；空闲 20s 发 `ping`；非法/未知任务关闭码 `4404` |
+| GET      | `/api/talents`                              | —                                          | 四名员工与当前启用版本                                                                                        |
+| GET      | `/api/talents/{talent}`                     | —                                          | 版本、经验、提案、评估、审计、回归用例与阈值                                                                  |
+| POST     | `/api/talents/{talent}/diagnose`            | —                                          | 跑固定回归集，生成 verified 经验                                                                              |
+| POST     | `/api/talents/{talent}/rollback`            | `{"version": n, "reason": "..."}`          | 回滚到非候选版本；候选版本 → `409`                                                                            |
+| GET      | `/api/lessons`                              | `?talent=` 可选                            | 经验列表                                                                                                      |
+| POST     | `/api/lessons/{id}/verify`                  | `{"verification": "证据"}`                 | candidate → verified；无证据 → `400`                                                                          |
+| POST     | `/api/lessons/{id}/reject`                  | —                                          | candidate → rejected；verified → `409`                                                                        |
+| POST     | `/api/tasks/{task_id}/lessons`              | —                                          | 从终态任务产物提取经验；非终态 → `409`                                                                        |
+| GET/POST | `/api/evolution/proposals`                  | POST：`{"talent","lesson_ids"}`            | 提案列表 / 新建提案（仅 verified 经验）                                                                       |
+| GET      | `/api/evolution/proposals/{id}`             | —                                          | 单个提案                                                                                                      |
+| POST     | `/api/evolution/proposals/{id}/evaluate`    | —                                          | 固定回归评估，写 `engine=mock` 报告                                                                           |
+| POST     | `/api/evolution/proposals/{id}/approve`     | —                                          | 评估通过后批准并启用；未通过 → `409`                                                                          |
+| POST     | `/api/evolution/proposals/{id}/reject`      | —                                          | 拒绝提案与候选版本                                                                                            |
+| GET      | `/api/evolution/evaluations/{id}`           | —                                          | 评估报告                                                                                                      |
 
 `TaskRecord` 字段：
 
@@ -253,11 +289,31 @@ pending → planning → coding → reviewing → [fixing → reviewing] × ≤2
   "status": "pending | planning | coding | reviewing | fixing | marketing | completed | failed | needs_attention | cancelled",
   "fix_attempts": 0,
   "max_fix_rounds": 2,
-  "artifacts": {"prd.md": "prd.md"},
-  "events": [{"task_id": "...", "type": "task.created", "message": "...", "stage": "...", "created_at": "...", "data": {}}],
+  "artifacts": { "prd.md": "prd.md" },
+  "events": [
+    {
+      "task_id": "...",
+      "type": "task.created",
+      "message": "...",
+      "stage": "...",
+      "created_at": "...",
+      "data": {}
+    }
+  ],
   "error": null,
-  "budget": {"task_id": "...", "budget_usd": 1.0, "spent_usd": 0.0, "calls": 0, "unknown_usage_calls": 0, "unknown_cost_calls": 0, "downgraded_calls": 0, "blocked_calls": 0, "models": {}},
+  "budget": {
+    "task_id": "...",
+    "budget_usd": 1.0,
+    "spent_usd": 0.0,
+    "calls": 0,
+    "unknown_usage_calls": 0,
+    "unknown_cost_calls": 0,
+    "downgraded_calls": 0,
+    "blocked_calls": 0,
+    "models": {}
+  },
   "cancel_requested_at": null,
+  "talent_versions": { "reviewer": "reviewer@v2", "coo": "coo@v1" },
   "created_at": "...",
   "updated_at": "..."
 }
@@ -270,10 +326,26 @@ pending → planning → coding → reviewing → [fixing → reviewing] × ≤2
 WebSocket 消息统一字段：
 
 ```json
-{"type": "budget.updated", "task_id": "...", "agent": "coo", "status": null, "stage": "planning",
- "message": "...", "ts": "ISO8601", "data": {}, "model": "mock", "duration_ms": 12,
- "token_usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "source": "estimated"},
- "result": "ok", "error": null}
+{
+  "type": "budget.updated",
+  "task_id": "...",
+  "agent": "coo",
+  "status": null,
+  "stage": "planning",
+  "message": "...",
+  "ts": "ISO8601",
+  "data": {},
+  "model": "mock",
+  "duration_ms": 12,
+  "token_usage": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "source": "estimated"
+  },
+  "result": "ok",
+  "error": null
+}
 ```
 
 ---
@@ -299,22 +371,36 @@ output/{task_id}/
 
 写入策略：**只新增，不删除**。任一阶段失败或取消，已产出文件全部保留。
 
-### 7.2 各类数据的实际保存方式
+### 7.2 自进化目录（`EVOLUTION_DIR`，默认 `output/evolution`，已被 `output/*` 忽略）
 
-| 概念 | 实际实现 | 位置 |
-| --- | --- | --- |
-| Task | `TaskRecord` → `task.json` | `output/{task_id}/task.json` |
-| Version | 修复前快照文件，无版本对象 | `output/{task_id}/history/index.v{n}.html` |
-| Run | **不存在**；一次 `POST /api/tasks` 即一次运行 | — |
-| Project | **不存在** | — |
-| Talent | YAML 静态配置，启动/调用时读取并校验 | `talents/*.yaml` |
-| Event | `TraceEvent` 数组，随 `task.json` 落盘 | `task.json.events` |
-| Budget | `TaskBudget` 快照，随 `task.json` 落盘 | `task.json.budget` |
-| 事件订阅队列 | 进程内 `asyncio.Queue(256)` | 内存，重启即失 |
-| 预算累计 | `BudgetGuard._state` 字典 | 内存，重启清零 |
-| 运行/取消标记 | `WorkflowEngine._running / _cancel_requested` | 内存 |
+```
+output/evolution/
+    talents/{talent}/versions/v{n}.json   不可变 Talent 版本
+    talents/{talent}/active.json          启用指针 + 启用/回滚审计
+    lessons/{lesson_id}.json              经验（candidate/verified/rejected）
+    proposals/{proposal_id}.json          进化提案
+    evaluations/{evaluation_id}.json      新旧版本回归评估报告
+```
 
-### 7.3 敏感数据
+### 7.3 各类数据的实际保存方式
+
+| 概念          | 实际实现                                                 | 位置                                          |
+| ------------- | -------------------------------------------------------- | --------------------------------------------- |
+| Task          | `TaskRecord` → `task.json`                               | `output/{task_id}/task.json`                  |
+| Version       | 修复前快照文件，无版本对象                               | `output/{task_id}/history/index.v{n}.html`    |
+| Run           | **不存在**；一次 `POST /api/tasks` 即一次运行            | —                                             |
+| Project       | **不存在**                                               | —                                             |
+| Talent        | YAML 基线 + `output/evolution` 版本库（v1 由 YAML 播种） | `talents/*.yaml`、`output/evolution/talents/` |
+| Lesson        | 一条经验一个 JSON 文件                                   | `output/evolution/lessons/`                   |
+| Proposal      | 一个提案一个 JSON 文件                                   | `output/evolution/proposals/`                 |
+| Evaluation    | 一个评估报告一个 JSON 文件                               | `output/evolution/evaluations/`               |
+| Event         | `TraceEvent` 数组，随 `task.json` 落盘                   | `task.json.events`                            |
+| Budget        | `TaskBudget` 快照，随 `task.json` 落盘                   | `task.json.budget`                            |
+| 事件订阅队列  | 进程内 `asyncio.Queue(256)`                              | 内存，重启即失                                |
+| 预算累计      | `BudgetGuard._state` 字典                                | 内存，重启清零                                |
+| 运行/取消标记 | `WorkflowEngine._running / _cancel_requested`            | 内存                                          |
+
+### 7.4 敏感数据
 
 - `LLM_API_KEY` 只存在于服务端 `.env` / 环境变量，`.env` 已被 `.gitignore` 忽略。
 - 代码中没有任何硬编码密钥、Token 或密码。
@@ -347,12 +433,12 @@ uv run pytest -q
 
 本次交接实测：
 
-| 命令 | 结果 |
-| --- | --- |
-| `uv run pytest -q` | **78 passed in 62.03s** |
-| `uv run python -c "import backend.main"` | `app ok OneGameStudio 0.7.0 mock=True` |
+| 命令                                                | 结果                                         |
+| --------------------------------------------------- | -------------------------------------------- |
+| `uv run pytest -q`                                  | **97 passed in 51.37s**                      |
+| `uv run python -c "import backend.main"`            | `app ok OneGameStudio 0.8.0 mock=True`       |
 | 临时端口启动 `uvicorn backend.main:app --port 8123` | `/api/health` 200、`/` 200、`/style.css` 200 |
-| 前端构建 | 不需要；FastAPI 直接挂载 `frontend/` |
+| 前端构建                                            | 不需要；FastAPI 直接挂载 `frontend/`         |
 
 机械门禁需要浏览器：
 
@@ -386,6 +472,9 @@ LLM_MODEL=...
 5. `TaskStore.find_active_by_requirement` 每次提交都遍历 `output/` 下所有任务（O(n)）。
 6. 机械门禁的玩法断言依赖游戏暴露 `window.__ogsProbe`；未暴露时方向键/计分/重开只能标 `unverified`。
 7. Mock 模式费用是「配置单价 × 估算 token」，与真实账单无关；未配置 `MODEL_PRICES` 时 `cost_status="unknown"`。
+8. 自进化评估只有 `engine=mock`：基于清单关键词覆盖判定，不代表真实模型能力；`MOCK_MODE=false` 时服务层明确报错。
+9. 进化提案是规则型：只追加 checklist，不改写 prompt；提示词级进化需要真实模型对比评估。
+10. `active.json` 审计为追加数组，暂无归档；`output/evolution` 无清理策略。
 
 ### 9.2 技术债务
 
@@ -402,6 +491,8 @@ LLM_MODEL=...
 - WebSocket 重连与快照恢复没有自动化用例。
 - 机械门禁测试依赖本机 Chrome，CI 上可能因浏览器缺失而失败。
 - 预算的并发边界（多任务同时调用）没有压力测试。
+- Talent 面板没有浏览器点击级自动化测试，只通过 `node --check`、HTTP 接口与 JSON 结构验证。
+- 自进化只覆盖 Mock 评估，真实模型评估链路没有测试。
 
 ### 9.4 已知安全问题
 
@@ -414,7 +505,7 @@ LLM_MODEL=...
 
 1. 是否引入 Project/Run 领域模型，还是继续「一需求一 Task」。
 2. 预算与事件是否需要迁到 Redis / SQLite 以支持多 worker。
-3. 员工自进化采用「经验文件 + 提示词注入」还是「独立反思 Agent」。
+3. 员工自进化已落地为「版本库 + 经验文件 + checklist 注入」；是否引入「独立反思 Agent」或提示词改写仍未决定。
 4. 双角色冲突协作如何与现有固定状态机共存（新增状态还是并行分支）。
 5. 部署形态：npx 单命令起服务，还是 Docker + 反向代理。
 6. 是否给生成游戏引入版本号字段与回滚接口（当前只有文件快照）。
@@ -423,13 +514,13 @@ LLM_MODEL=...
 
 ## 10. 后续开发计划
 
-> 注意：原计划的「下一阶段：Mini-6 Harness」**已经完成**（提交 `dc4e17a`，78 测试通过，`docs/harness.md` 已生成）。下一阶段应从下面的列表开始。
+> 注意：Mini-6 Harness（阶段 6）与 AI 员工自进化（阶段 8）**均已完成**。阶段 8 见 [talent-evolution.md](talent-evolution.md)。下一阶段应从下面的列表开始。
 
 建议顺序：
 
-1. **AI 员工自进化（Phase 7）**
-   - 目标：让员工在多次任务后积累可复用经验（如「常见门禁失败原因」「PRD 拆分套路」）。
-   - 建议入口：新增 `talents/memory/` 或 `output/experience/`，在 `Vessel.execute` 组装 context 时注入；必须保持模型不能改状态机。
+1. **真实模型评估（live 引擎）**
+   - 目标：把阶段 8 的固定回归集交给真实模型执行，用真实检出率/误报率/Token 替换 Mock 判定。
+   - 约束：必须保留同一组用例与写死的验收阈值；评估失败与未知用量要如实标注。
 2. **双角色冲突协作与极速 SOP**
    - 目标：Reviewer / Engineer 冲突时引入结构化辩论或第三方裁决；为短任务提供精简 SOP。
    - 约束：不破坏现有 10 态状态机与终态语义，新增能力优先做成可开关的编排层。
@@ -437,30 +528,46 @@ LLM_MODEL=...
    - 目标：一条命令起服务；补 `package.json`、启动脚本、生产环境配置。
    - 需要处理：单 worker 限制（当前进程内状态）、鉴权、HTTPS、静态资源缓存。
 4. **端到端测试与黑客松交付**
-   - 目标：前端 E2E（提交需求 → 观看动画 → 预览游戏 → 查看审查/营销 → 取消/重连）。
+   - 目标：前端 E2E（提交需求 → 观看动画 → 预览游戏 → 查看审查/营销/Talent → 取消/重连）。
    - 需要补：真实模型模式的冒烟测试（可选用廉价模型 + 预算上限）、CI 中的 Chromium 安装、演示数据清理脚本。
 
 ---
 
 ## 11. 交接验收记录
 
-| 项目 | 结果 |
-| --- | --- |
-| 测试命令 | `uv run pytest -q` |
-| 测试结果 | **78 passed in 62.03s** |
-| 测试文件 | `test_api.py`(17) / `test_contract.py`(6) / `test_gate.py`(7) / `test_harness.py`(14) / `test_talents.py`(9) / `test_vessel.py`(8) / `test_workflow.py`(12)（含参数化，合计 78） |
-| 应用导入 | 通过（FastAPI `OneGameStudio` v0.7.0，`mock_mode=True`） |
-| HTTP 冒烟 | `/api/health`、`/`、`/style.css` 均 200 |
-| Git 状态 | `main`，`dc4e17a`，与 `origin/main` 同步；仅 `docs/harness.md` 有未提交修改 |
-| 未验证项 | 真实 LLM 端到端、前端 E2E、多 worker 部署、npx 启动、预算并发压力测试 |
+| 项目      | 结果                                                                                                                                                                                            |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 测试命令  | `uv run pytest -q`                                                                                                                                                                              |
+| 测试结果  | **97 passed in 51.37s**                                                                                                                                                                         |
+| 测试文件  | `test_api.py`(17) / `test_contract.py`(6) / `test_evolution.py`(19) / `test_gate.py`(9) / `test_harness.py`(14) / `test_talents.py`(9) / `test_vessel.py`(11) / `test_workflow.py`(12)，合计 97 |
+| 应用导入  | 通过（FastAPI `OneGameStudio` v0.8.0，`mock_mode=True`）                                                                                                                                        |
+| HTTP 冒烟 | `/api/health`、`/`、`/style.css`、`/talent.js` 均 200                                                                                                                                           |
+| Git 状态  | `main`，`ec70e94`；阶段 8 改动未提交                                                                                                                                                            |
+| 未验证项  | 真实 LLM 端到端、真实模型评估（live）、前端 E2E、多 worker 部署、npx 启动、预算并发压力测试                                                                                                     |
 
 ### 交接时的 Git 信息
 
 ```text
 branch : main
-commit : dc4e17a 完成了6-harness
-origin : dc4e17a（已同步）
-status : M docs/harness.md
+commit : ec70e94 补充跨对话交接文档并同步阶段6状态说明
+origin : ec70e94（未推送阶段 8 改动）
+status : M backend/config.py
+         M backend/core/vessel.py
+         M backend/main.py
+         M backend/models/contract.py
+         M backend/models/talent.py
+         M backend/workflow/engine.py
+         M frontend/app.js
+         M frontend/index.html
+         M frontend/style.css
+         M talents/coo.yaml
+         M talents/engineer.yaml
+         M talents/marketer.yaml
+         M talents/reviewer.yaml
+         ?? backend/evolution/
+         ?? frontend/talent.js
+         ?? tests/test_evolution.py
+         ?? docs/talent-evolution.md
 ```
 
 未做任何 `git add / commit / push`。
@@ -469,4 +576,4 @@ status : M docs/harness.md
 
 ## 12. 给下一个 Agent 的第一句话
 
-> 先读 `docs/HANDOFF.md`（本文）→ `docs/architecture.md` → `docs/harness.md` → `docs/progress.md`，然后跑 `uv run pytest -q` 确认 78 passed。阶段 6 已完成，不要重做 Mini-6 Harness。改动前先读现有代码与文档，保持「状态由 Python 控制、费用不伪造、产物只增不删」三条底线。
+> 先读 `docs/HANDOFF.md`（本文）→ `docs/architecture.md` → `docs/harness.md` → `docs/talent-evolution.md` → `docs/progress.md`，然后跑 `uv run pytest -q` 确认 97 passed。阶段 6（Mini-6 Harness）与阶段 8（AI 员工自进化）均已完成，不要重做。改动前先读现有代码与文档，保持「状态由 Python 控制、费用不伪造、产物只增不删、安全边界不可被进化触碰」四条底线。

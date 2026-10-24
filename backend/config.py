@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     # 目录
     talents_dir: Path = Path("talents")
     output_dir: Path = Path("output")
+    # 阶段 8：Talent 版本库、经验、提案与评估报告的落盘目录
+    evolution_dir: Path = Path("output/evolution")
 
     # Harness 4：provider 层有限重试（只对调用异常重试，超时不重试）
     provider_max_retries: int = 1
@@ -38,10 +40,13 @@ class Settings(BaseSettings):
     budget_soft_ratio: float = 0.7
     light_model: str = ""
     max_output_tokens: int = 2048
+    # 阶段 9：冲突阶段两名总监的输出上限；只约束顾问意见，不约束游戏代码
+    opinion_max_output_tokens: int = 600
     # JSON：{"模型名": {"input_per_1k": 0.0, "output_per_1k": 0.0}}，默认空 = 费用未知
     model_prices: str = ""
-    # 并发模型调用上限；预算检查在串行化锁内进行，限制并发以防超额
-    max_concurrent_calls: int = 1
+    # 并发模型调用上限；预算检查在串行化锁内进行。
+    # 默认 2：冲突阶段需要 Creative 与 Delivery 真实并行；最坏超额多一次顾问调用。
+    max_concurrent_calls: int = 2
 
     # 自动修复轮次上限（默认最多两次代码修复）
     max_fix_rounds: int = 2

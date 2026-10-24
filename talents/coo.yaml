@@ -10,3 +10,6 @@ allowed_tools:
   - read_requirement
   - write_prd
 output_schema: prd
+checklist:
+  - "PRD 必须覆盖标题、类型、核心循环、功能、操作、胜利条件与失败条件"
+  - "输出必须能被 Pydantic 契约校验，字段不得缺失"

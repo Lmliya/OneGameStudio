@@ -12,15 +12,23 @@ from backend.budget import BudgetGuard
 from backend.bus import EventBus
 from backend.config import get_settings
 from backend.core.vessel import Vessel
+from backend.evolution.api import create_evolution_router
+from backend.evolution.service import EvolutionService
+from backend.evolution.store import EvolutionStore
 from backend.models.contract import TaskCreateRequest, TaskRecord
 from backend.providers import build_provider
-from backend.store import TaskNotFoundError, TaskStore
+from backend.store import (
+    TaskNotFoundError,
+    TaskStore,
+    VersionError,
+    VersionNotFoundError,
+)
 from backend.workflow import TaskNotRunnableError, WorkflowEngine
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = ROOT_DIR / "frontend"
 
-app = FastAPI(title="OneGameStudio", version="0.7.0")
+app = FastAPI(title="OneGameStudio", version="0.9.0")
 settings = get_settings()
 
 
@@ -32,6 +40,12 @@ def _resolve(path: Path) -> Path:
 store = TaskStore(_resolve(settings.output_dir))
 bus = EventBus()
 budget_guard = BudgetGuard.from_settings(settings)
+# 阶段 8：Talent 版本库（首次启动把 talents/*.yaml 注册为 v1）
+evolution_store = EvolutionStore(
+    _resolve(settings.evolution_dir), _resolve(settings.talents_dir)
+)
+evolution_store.ensure_seeded()
+evolution_service = EvolutionService(evolution_store, mock_mode=settings.mock_mode)
 # Mock 模式下实际发起的是 mock 调用，预算记账也应如实使用 "mock" 作为模型名
 runtime_model = "mock" if settings.mock_mode else settings.llm_model
 vessel = Vessel(
@@ -45,6 +59,7 @@ vessel = Vessel(
     max_concurrent_calls=settings.max_concurrent_calls,
     max_retries=settings.provider_max_retries,
     retry_backoff_seconds=settings.provider_retry_backoff_seconds,
+    talent_versions=evolution_store,
 )
 engine = WorkflowEngine(
     vessel,
@@ -53,7 +68,9 @@ engine = WorkflowEngine(
     on_event=bus.publish,
     stage_min_seconds=settings.stage_min_seconds,
     budget=budget_guard,
+    opinion_max_output_tokens=settings.opinion_max_output_tokens,
 )
+app.include_router(create_evolution_router(evolution_store, evolution_service, store))
 
 # 持有后台任务引用，防止被垃圾回收
 _background: set[asyncio.Task] = set()
@@ -113,7 +130,17 @@ async def create_task(request: TaskCreateRequest) -> TaskRecord:
             },
         )
 
-    record = store.create(request.requirement, max_fix_rounds=settings.max_fix_rounds)
+    try:
+        record = store.create(
+            request.requirement,
+            max_fix_rounds=settings.max_fix_rounds,
+            sop_mode=request.sop_mode,
+            source_version_id=request.source_version_id,
+        )
+    except VersionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except VersionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     schedule(record.task_id)
     return record
 
@@ -143,7 +170,9 @@ def get_artifacts(task_id: str) -> dict[str, str]:
 _ARTIFACT_FILE = re.compile(
     r"^(prd\.md|index\.html|gate\.json|review\.json"
     r"|marketing_kit\.md|marketing_kit\.json"
-    r"|history/index\.v\d+\.html|history/gate\.v\d+\.json)$"
+    r"|creative_proposal\.json|delivery_assessment\.json|conflict_decision\.json"
+    r"|history/index\.v\d+\.html|history/gate\.v\d+\.json"
+    r"|history/creative_proposal\.round\d+\.json)$"
 )
 
 
@@ -157,6 +186,13 @@ def get_artifact_file(task_id: str, filename: str) -> PlainTextResponse:
     if not path.exists():
         raise HTTPException(status_code=404, detail="产物不存在")
     return PlainTextResponse(path.read_text(encoding="utf-8"))
+
+
+@app.get("/api/tasks/{task_id}/versions")
+def list_versions(task_id: str) -> list[dict]:
+    """返回该任务的全部不可变游戏版本记录。"""
+    _load_or_404(task_id)
+    return [item.model_dump(mode="json") for item in store.list_versions(task_id)]
 
 
 @app.get("/api/tasks/{task_id}/history")

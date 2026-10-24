@@ -14,7 +14,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="logo">▚</span> ONEGAMESTUDIO
-        <span class="ver">v0.7</span>
+        <span class="ver">v0.8</span>
       </div>
 
       <form id="ceo-form" class="ceo-console" autocomplete="off">
@@ -49,6 +49,7 @@
           <button type="button" data-tab="game" class="active">Game</button>
           <button type="button" data-tab="review">Review</button>
           <button type="button" data-tab="marketing">Marketing</button>
+          <button type="button" data-tab="talent">Talent</button>
           <button type="button" data-tab="logs">Logs</button>
         </nav>
 
@@ -86,6 +87,17 @@
             <div id="marketing-body" class="scroll"></div>
           </section>
 
+          <section id="tab-talent" class="tab-pane hidden">
+            <div class="talent-wrap">
+              <div id="talent-list" class="talent-list scroll"></div>
+              <div id="talent-detail" class="talent-detail scroll">
+                <p class="muted">
+                  选择左侧员工查看 Talent 版本、经验与进化提案。
+                </p>
+              </div>
+            </div>
+          </section>
+
           <section id="tab-logs" class="tab-pane hidden">
             <div id="log-list" class="scroll log-list"></div>
           </section>
@@ -100,5 +112,6 @@
 
     <script src="/office.js"></script>
     <script src="/app.js"></script>
+    <script src="/talent.js"></script>
   </body>
 </html>

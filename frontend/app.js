@@ -461,7 +461,7 @@ function renderMarketing() {
       <div class="block-body"><span style="color:#7ee787">${esc(kit.slogan)}</span></div>
     </div>
     <div class="block">
-      <h3>小红书文案</h3>
+      <h3>宣发文案</h3>
       <div class="block-body">${posts}</div>
     </div>
     <div class="block">

@@ -517,3 +517,227 @@ ul.plain {
     min-height: 520px;
   }
 }
+
+/* ---------- Talent 自进化面板 ---------- */
+.talent-wrap {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.talent-list {
+  flex: 0 0 132px;
+  width: 132px;
+  border-right: 2px solid var(--border);
+  padding: 8px;
+}
+
+.talent-item {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: var(--panel-2);
+  border: 2px solid var(--border);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.talent-item:hover {
+  border-color: var(--border-hi);
+}
+
+.talent-item.active {
+  border-color: var(--accent);
+}
+
+.talent-item .t-name {
+  display: block;
+  color: var(--accent-2);
+  font-weight: 700;
+}
+
+.talent-item .t-ver {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.talent-detail {
+  padding: 10px;
+}
+
+.talent-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.talent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.talent-msg {
+  min-height: 16px;
+  margin-bottom: 8px;
+  color: var(--warn);
+  font-size: 11px;
+}
+
+.mini-btn {
+  padding: 2px 8px;
+  background: var(--panel-2);
+  border: 2px solid var(--border);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mini-btn:hover {
+  border-color: var(--accent-2);
+}
+
+.mini-btn.primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.mini-btn.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.version-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 12px;
+}
+
+.version-row:last-child {
+  border-bottom: none;
+}
+
+.version-row .v-label {
+  font-weight: 700;
+}
+
+.tag {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.tag.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.tag.candidate,
+.tag.pending,
+.tag.passed {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.tag.inactive,
+.tag.rejected,
+.tag.failed {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.tag.approved {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.talent-kv {
+  display: grid;
+  grid-template-columns: 66px 1fr;
+  gap: 2px 8px;
+  font-size: 12px;
+}
+
+.talent-kv dt {
+  color: var(--muted);
+}
+
+.talent-kv dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.check-list {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.proposal-card {
+  margin-bottom: 8px;
+  padding: 8px;
+  background: var(--panel-2);
+  border: 2px solid var(--border);
+}
+
+.proposal-card h4 {
+  margin: 0 0 6px;
+  color: var(--purple);
+  font-size: 12px;
+}
+
+.proposal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.metric-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.metric-row b {
+  color: var(--text);
+}
+
+.lesson-row {
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 12px;
+}
+
+.lesson-row:last-child {
+  border-bottom: none;
+}
+
+.status-verified {
+  color: var(--accent);
+}
+
+.status-candidate {
+  color: var(--warn);
+}
+
+.status-rejected {
+  color: var(--danger);
+}

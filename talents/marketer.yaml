@@ -36,3 +36,7 @@ allowed_tools:
   - read_review
   - write_marketing
 output_schema: marketing
+checklist:
+  - "只宣传机械门禁已验证的功能"
+  - "不编造用户数、下载量、评分、排名等任何数据"
+  - "输出正好 2 篇文案与 7 天推广计划"

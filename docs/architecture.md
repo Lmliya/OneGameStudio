@@ -1,6 +1,6 @@
 # OneGameStudio 架构说明
 
-> 版本：v0.7（阶段 6：Mini-6 Harness）
+> 版本：v0.8（阶段 8：AI 员工自进化）
 > 本文只描述已实现的部分，未实现的内容标注为"规划中"。
 > 跨对话交接、未完成模块与当前问题见 [HANDOFF.md](HANDOFF.md)。
 
@@ -32,22 +32,25 @@ frontend/
     style.css        像素风样式
     office.js        Canvas 2D 像素办公室（事件驱动的员工动画）
     app.js           WebSocket、快照恢复、产物渲染、日志
+    talent.js        Talent 面板：版本、经验、提案、评估、批准/回滚
 backend/
     main.py          FastAPI：API + WebSocket + 隔离预览 + 静态页面
     bus.py           进程内事件总线
-    config.py        全局配置（LLM_*）
+    config.py        全局配置（LLM_*、预算、EVOLUTION_DIR）
     schemas.py       输出契约 + 门禁报告
     talents.py       Talent 加载与工具白名单校验
     store.py         任务持久化与版本快照
     models/          TaskRecord / TalentSpec / TraceEvent
-    core/vessel.py   员工执行容器
+    core/vessel.py   员工执行容器（使用启用 Talent 版本）
     providers/       base / mock / openai
     gate/            机械门禁（Playwright）
     workflow/        状态机与编排引擎
-talents/             四个员工的 YAML
+    evolution/       阶段 8：版本库、经验库、提案、回归评估与审批 API
+talents/             四个员工的 YAML（基线 v1 由此播种）
 tests/               pytest
 docs/                架构与进度
 output/{task_id}/    任务产物（不入库）
+output/evolution/    Talent 版本、经验、提案、评估（不入库）
 ```
 
 ## 4. 状态机
@@ -170,6 +173,42 @@ Reviewer 只写 `review.json`，Marketer 只写 `marketing_kit.*`，两者都不
 - 营销失败只影响营销产物，`index.html` 与 `review.json` 保留。
 - 全流程没有发布接口，不向任何第三方平台推送。
 
+## 6.6 AI 员工自进化（阶段 8）
+
+详细字段、安全边界与限制见 [talent-evolution.md](talent-evolution.md)。
+
+```
+任务 Run（task.json 记录实际 talent_versions）
+   ↓ 门禁 fail / 审查问题
+经验提取 extract.py
+   ├─ 门禁 fail        → verified（证据 gate.json#check）
+   └─ 审查问题(非 low) → candidate
+   ↓
+诊断 diagnose（固定回归集）
+   └─ 漏检项 → verified 经验
+   ↓
+提案 create_proposal（只接受 verified）
+   └─ candidate 版本：prompt 不变，追加 checklist
+   ↓
+固定回归评估 evaluate
+   └─ 四条写死的验收条件 → passed / failed
+   ↓
+用户批准 approve（passed 才允许）
+   └─ active.json 指针切换到新版本，旧版本 inactive，写审计
+   ↓
+后续任务使用新版本
+   ↓
+rollback 到任意非候选版本
+```
+
+关键约束：
+
+- 版本文件只读，`active.json` 只保存指针与审计；回滚不复制内容。
+- 提案只允许改 `prompt` / `checklist`；工具白名单、输出契约、模型、质量门禁、预算、文件系统、执行逻辑均被模型层拒绝。
+- 固定回归用例与验收阈值写死在 `regression.py`：检出率 ≥0.9、不低于基线、误报率 ≤0.1、Token ≤2.0 倍基线。
+- 评估当前只有 `engine=mock`，报告明确标注模拟；`MOCK_MODE=false` 时服务层直接报错，不伪造真实评测。
+- 前端第 5 个标签 `Talent` 提供诊断、提案、评估、批准与回滚入口。
+
 ## 7. 产物
 
 `output/{task_id}/`：
@@ -188,16 +227,26 @@ Reviewer 只写 `review.json`，Marketer 只写 `marketing_kit.*`，两者都不
 
 写入策略：只新增不删除。任一阶段失败，已产出文件全部保留。
 
+`output/evolution/`（阶段 8，同样不入库）：
+
+| 路径                                  | 内容                                |
+| ------------------------------------- | ----------------------------------- |
+| `talents/{talent}/versions/v{n}.json` | 不可变 Talent 版本                  |
+| `talents/{talent}/active.json`        | 启用指针 + 启用/回滚审计            |
+| `lessons/{lesson_id}.json`            | 经验（candidate/verified/rejected） |
+| `proposals/{proposal_id}.json`        | 进化提案                            |
+| `evaluations/{evaluation_id}.json`    | 新旧版本回归评估报告                |
+
 ## 7.5 实时驾驶舱
 
 ### 7.5.1 前端结构
 
-| 区域          | 内容                                                |
-| ------------- | --------------------------------------------------- |
-| 顶部（64px）  | 需求输入、WebSocket 连接徽章、任务状态徽章、task_id |
-| 左侧（55%）   | Canvas 2D 像素办公室：四张桌子 + 四名员工 + 任务牌  |
-| 右侧（45%）   | Game / Review / Marketing / Logs 四个标签页         |
-| 底部（116px） | 最近事件条（同内容在 Logs 页保留全量）              |
+| 区域          | 内容                                                 |
+| ------------- | ---------------------------------------------------- |
+| 顶部（64px）  | 需求输入、WebSocket 连接徽章、任务状态徽章、task_id  |
+| 左侧（55%）   | Canvas 2D 像素办公室：四张桌子 + 四名员工 + 任务牌   |
+| 右侧（45%）   | Game / Review / Marketing / Logs / Talent 五个标签页 |
+| 底部（116px） | 最近事件条（同内容在 Logs 页保留全量）               |
 
 员工状态只有 `idle / working / reviewing / fixing / completed / error`，**全部由后端事件驱动**。前端没有任何计时器或随机数伪造进度；刷新页面后用快照回放事件，画面立即恢复。
 
@@ -253,17 +302,31 @@ Reviewer 只写 `review.json`，Marketer 只写 `marketing_kit.*`，两者都不
 
 ## 8. API
 
-| 方法 | 路径                                    | 行为                                    |
-| ---- | --------------------------------------- | --------------------------------------- |
-| GET  | `/api/health`                           | 返回运行模式                            |
-| POST | `/api/tasks`                            | 202，后台执行；同需求运行中任务返回 409 |
-| POST | `/api/tasks/{task_id}/cancel`           | 202，取消任务；终态任务返回 409         |
-| GET  | `/api/tasks/{task_id}`                  | 任务状态与事件                          |
-| GET  | `/api/tasks/{task_id}/artifacts`        | 产物文件名到内容的映射                  |
-| GET  | `/api/tasks/{task_id}/artifacts/{file}` | 单个产物（白名单校验）                  |
-| GET  | `/api/tasks/{task_id}/history`          | 修复前版本快照列表                      |
-| GET  | `/preview/{task_id}/{file}`             | 隔离预览（CSP + nosniff + no-store）    |
-| WS   | `/ws/tasks/{task_id}`                   | 首帧快照 + 实时事件流                   |
+| 方法     | 路径                                     | 行为                                    |
+| -------- | ---------------------------------------- | --------------------------------------- |
+| GET      | `/api/health`                            | 返回运行模式                            |
+| POST     | `/api/tasks`                             | 202，后台执行；同需求运行中任务返回 409 |
+| POST     | `/api/tasks/{task_id}/cancel`            | 202，取消任务；终态任务返回 409         |
+| GET      | `/api/tasks/{task_id}`                   | 任务状态与事件                          |
+| GET      | `/api/tasks/{task_id}/artifacts`         | 产物文件名到内容的映射                  |
+| GET      | `/api/tasks/{task_id}/artifacts/{file}`  | 单个产物（白名单校验）                  |
+| GET      | `/api/tasks/{task_id}/history`           | 修复前版本快照列表                      |
+| GET      | `/preview/{task_id}/{file}`              | 隔离预览（CSP + nosniff + no-store）    |
+| WS       | `/ws/tasks/{task_id}`                    | 首帧快照 + 实时事件流                   |
+| GET      | `/api/talents`                           | 员工当前启用版本概览                    |
+| GET      | `/api/talents/{talent}`                  | 版本、经验、提案、评估、审计与阈值      |
+| POST     | `/api/talents/{talent}/diagnose`         | 固定回归诊断，生成 verified 经验        |
+| POST     | `/api/talents/{talent}/rollback`         | 回滚到非候选版本                        |
+| GET      | `/api/lessons`                           | 经验列表                                |
+| POST     | `/api/lessons/{id}/verify`               | candidate → verified（必须带证据）      |
+| POST     | `/api/lessons/{id}/reject`               | candidate → rejected                    |
+| POST     | `/api/tasks/{task_id}/lessons`           | 从终态任务提取经验                      |
+| GET/POST | `/api/evolution/proposals`               | 提案列表 / 新建提案（仅 verified 经验） |
+| GET      | `/api/evolution/proposals/{id}`          | 单个提案                                |
+| POST     | `/api/evolution/proposals/{id}/evaluate` | 固定回归评估                            |
+| POST     | `/api/evolution/proposals/{id}/approve`  | 评估通过后批准并启用                    |
+| POST     | `/api/evolution/proposals/{id}/reject`   | 拒绝提案与候选版本                      |
+| GET      | `/api/evolution/evaluations/{id}`        | 评估报告                                |
 
 未知 task_id 的 WebSocket 连接会被直接关闭。
 
@@ -282,6 +345,13 @@ Reviewer 只写 `review.json`，Marketer 只写 `marketing_kit.*`，两者都不
 - `allowed_tools` 加载时与白名单求差集。
 - 全项目无 shell 执行入口。
 - API Key 只从服务端环境变量读取。
+
+自进化部分：
+
+- 提案只允许 `prompt` / `checklist`，受保护键在模型层直接拒绝。
+- 候选版本的安全字段从基线复制，启用时逐字段比对，不一致拒绝。
+- 只有评估 `passed` 且用户显式批准才能切换 `active.json`。
+- `engine=mock` 报告明确标注模拟；未接入的 live 评估直接报错。
 
 浏览器内预览部分（见 7.5.4）：
 
@@ -302,6 +372,18 @@ Reviewer 只写 `review.json`，Marketer 只写 `marketing_kit.*`，两者都不
 | Recovery      | `core/vessel.py`（重试/超时）+ `engine.cancel` + `main.py` 取消端点         |
 | Budget Guard  | `budget.py`（单任务预算、70% 降级、阻断、价格可配置、限并发）               |
 | Event Trace   | `models/events.py` 统一字段 + `engine._emit` 落盘 + `bus.py` + WS           |
+
+## 10.5 阶段 8 落位情况
+
+| 能力          | 实现位置                                                                       |
+| ------------- | ------------------------------------------------------------------------------ |
+| Talent 版本库 | `evolution/store.py`（只读版本 + `active.json` 指针 + 审计）                   |
+| 经验库        | `evolution/models.py`、`evolution/extract.py`、`evolution/service.py`          |
+| 提案与边界    | `evolution/models.py`（`ALLOWED_CHANGE_KEYS` / `PROTECTED_KEYS`）              |
+| 固定回归评估  | `evolution/regression.py`（用例与阈值写死，`engine=mock` 明确标注）            |
+| 审批与回滚    | `evolution/service.py` + `evolution/api.py`                                    |
+| 运行时接入    | `core/vessel.py`（启用版本 + checklist 注入 + 版本标签）、`workflow/engine.py` |
+| 前端          | `frontend/talent.js`（第 5 个标签）                                            |
 
 ## 11. 运行依赖
 

@@ -2,10 +2,89 @@
 
 ## 交接状态（2026-10-24）
 
-- 分支 `main`，最新提交 `dc4e17a 完成了6-harness`，与 `origin/main` 同步。
-- 未提交修改：仅 `docs/harness.md`（本地排版调整）。
-- 测试：`uv run pytest -q` → **78 passed**。
+- 分支 `main`，最新提交 `ec70e94 补充跨对话交接文档并同步阶段6状态说明`；阶段 8 改动尚未提交。
+- 未提交修改：`backend/`（config、vessel、main、contract、talent、engine）、`frontend/`（index、style、app、talent.js）、`talents/*.yaml`、`tests/test_evolution.py`、`backend/evolution/`、文档。
+- 测试：`uv run pytest -q` → **97 passed**。
 - 交接文档：[HANDOFF.md](HANDOFF.md)（含架构、API、存储、问题与下一阶段入口）。
+- 阶段 8 说明：[talent-evolution.md](talent-evolution.md)。
+
+---
+
+## 阶段 8：AI 员工自进化（已完成）
+
+**日期**：2026-10-24
+
+目标：打通「任务反馈 → 经验 → 提案 → 新旧评估 → 用户批准 → 启用 → 回滚」闭环，同时保证历史不可覆盖、安全边界不可触碰。
+
+### 已实现
+
+- **Talent 版本库**：首次启动从 `talents/*.yaml` 播种 `v1`（幂等）；版本文件写入后只读，`active.json` 指针决定启用版本；启用时与基线逐字段比对工具白名单、输出契约与模型。
+- **经验库**：`candidate / verified / rejected` 三态；`verified` 必须有可追溯证据；任务产物提取（门禁 fail → verified，审查问题 → candidate）；固定回归诊断的漏检项自动生成 verified 经验。
+- **进化提案**：只接受同员工的 `verified` 经验，且经验不能被其他未拒绝提案占用；只允许修改 `prompt` / `checklist`，受保护字段在模型层直接拒绝。
+- **规则型提案**：`prompt` 保持基线不变，只追加 `checklist`，控制 token 增长并保证来源可追溯。
+- **固定回归评估**：Reviewer 5 条（含正常游戏）、COO 4 条、Engineer 4 条、Marketer 4 条；每条员工另有正常样例检查误报。
+- **验收条件写死**：检出率 ≥ 0.9、不低于基线、误报率 ≤ 0.1、Token ≤ 2.0 倍基线；全部通过才允许批准。
+- **审批与回滚**：未评估或评估失败时批准返回 409；批准先落盘审批状态再启用，失败回滚审批；任意非候选版本可回滚，审计写入 `active.json`。
+- **运行时接入**：`Vessel` 使用启用版本的 prompt/checklist，返回 `talent_version`；`WorkflowEngine` 写入 `TaskRecord.talent_versions`，事件中带版本标签。
+- **前端 Talent 面板**：第 5 个标签，展示版本、经验、提案、评估指标与验收条目，支持诊断、生成提案、提取经验、验证/拒绝经验、评估、批准、回滚。
+
+### 新增 / 修改文件
+
+```
+新建  backend/evolution/models.py       领域模型与安全边界
+新建  backend/evolution/store.py        JSON 版本库与原子写
+新建  backend/evolution/regression.py   固定回归用例与评估
+新建  backend/evolution/service.py      闭环编排
+新建  backend/evolution/extract.py      任务产物经验提取
+新建  backend/evolution/api.py          17 个自进化端点
+新建  backend/evolution/errors.py       异常类型
+新建  backend/evolution/__init__.py     导出
+新建  frontend/talent.js                Talent 面板
+新建  tests/test_evolution.py           19 个用例
+新建  docs/talent-evolution.md          闭环、字段、边界与限制
+
+修改  backend/models/talent.py          checklist / version 字段
+修改  backend/core/vessel.py            启用版本读取、checklist 注入、版本标签
+修改  backend/models/contract.py        talent_versions 快照
+修改  backend/workflow/engine.py        记录实际 Talent 版本
+修改  backend/config.py                 EVOLUTION_DIR
+修改  backend/main.py                   装配 EvolutionStore/Service，v0.8.0
+修改  talents/*.yaml                    四份初始 checklist
+修改  frontend/index.html/style.css     Talent 标签与样式
+修改  frontend/app.js                   Talent 面板初始化
+```
+
+### 测试
+
+```
+uv run pytest -q  → 97 passed in 51.37s（阶段 6 为 78，新增 19）
+```
+
+新增覆盖：种子幂等、verified 必须有证据、受保护字段拒绝、未批准不能启用、诊断生成 verified 经验且幂等、仅 verified 可进提案、手工验证、评估 passed + `engine=mock` + notes 标注模拟、批准启用与回滚审计、拒绝提案、篡改工具白名单被拒、live 引擎显式不可用、工作流记录 `reviewer@v2` / `coo@v1`、任务经验提取 verified/candidate 区分、API 全链路、非终态任务提取返回 409、拒绝经验。
+
+### 端到端验收（真实 HTTP，Mock 模式）
+
+服务：`EVOLUTION_DIR=/tmp/ogs_evo_demo uv run uvicorn backend.main:app --port 8123`
+
+| 步骤           | 结果                                                                           |
+| -------------- | ------------------------------------------------------------------------------ |
+| 基线           | `reviewer@v1`，checklist 3 条                                                  |
+| 诊断           | `engine=mock`，base 检出率 0.0，生成 4 条 verified 经验                        |
+| 提案           | `proposal_2df991c13c`，v1 → v2，`proposed_changes` 仅含 `prompt` / `checklist` |
+| 未评估直接批准 | HTTP 409 `{"detail":"提案评估未通过，不能批准"}`                               |
+| 评估           | `passed=true`，检出率 0.0 → 1.0，误报 0.0 → 0.0，notes 明确标注模拟            |
+| 批准           | active `reviewer@v2`，审计 `activate 1 -> 2`                                   |
+| 回滚           | active `reviewer@v1`，审计 `rollback 阶段8演示回滚`                            |
+| 收尾           | versions `[(2,inactive),(1,active)]`、lessons 4、proposals 1                   |
+
+### 未解决问题
+
+1. `live` 评估引擎未接入，真实模型下的进化效果未验证；`MOCK_MODE=false` 时服务层明确报错。
+2. Mock 评估基于「清单是否覆盖验证点」的关键词判定，不代表模型真实执行能力。
+3. 提案生成是规则型，不支持自动改写提示词；提示词级改写需要真实的对比评估。
+4. 没有独立 Project/Run 实体，经验来源用 `task_id` 近似。
+5. Talent 面板尚未做浏览器点击级自动化测试，仅通过 `node --check` 与 HTTP 接口验证。
+6. `active.json` 审计为追加数组，没有归档策略。
 
 ---
 

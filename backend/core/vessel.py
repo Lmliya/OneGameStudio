@@ -16,6 +16,8 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from backend.budget import BudgetGuard
+from backend.evolution.errors import EvolutionError
+from backend.evolution.store import EvolutionStore
 from backend.models.events import EventType, TokenUsage, TraceEvent, Tracer
 from backend.models.talent import TalentSpec
 from backend.providers.base import BaseProvider
@@ -69,6 +71,8 @@ class AgentResult(BaseModel):
     budget_ratio: float | None = None
     downgraded: bool = False
     budget_reason: str = ""
+    # 本次执行实际使用的 Talent 版本（baseline 或 coo@v2 形式），用于任务追溯
+    talent_version: str = "baseline"
 
 
 def _extract_json(raw: str) -> dict:
@@ -105,10 +109,12 @@ class Vessel:
         max_concurrent_calls: int = 1,
         max_retries: int = 0,
         retry_backoff_seconds: float = 0.5,
+        talent_versions: EvolutionStore | None = None,
     ) -> None:
         self._provider = provider
         self._talents_dir = talents_dir
         self._default_model = default_model
+        self._talent_versions = talent_versions
         self._timeout = timeout_seconds
         self._budget_usd = budget_usd
         self._tracer = tracer
@@ -126,16 +132,38 @@ class Vessel:
         return self._spent_usd
 
     def load(self, talent_id: str) -> TalentSpec:
-        """加载并校验 Talent，未知工具/未知 schema 在这里被拒绝。"""
+        """加载并校验 Talent，未知工具/未知 schema 在这里被拒绝。
+
+        配置了版本库时，使用 active.json 指向的版本内容（提示词 + 检查清单），
+        工具权限/输出契约/模型仍来自基线 YAML，进化无法改动它们。
+        """
         try:
+            if self._talent_versions is not None:
+                return self._talent_versions.effective_spec(talent_id)
             return load_talent(talent_id, self._talents_dir)
-        except TalentConfigError as exc:
+        except (TalentConfigError, EvolutionError) as exc:
             raise TalentNotFoundError(str(exc)) from exc
 
+    @staticmethod
+    def _compose_system_prompt(talent: TalentSpec) -> str:
+        """把检查清单并入系统提示词，让经验沉淀对模型真正生效。"""
+        if not talent.checklist:
+            return talent.system_prompt
+        checklist = "\n".join(f"- {item}" for item in talent.checklist)
+        return f"{talent.system_prompt}\n\n## 工作检查清单（逐条自检）\n{checklist}"
+
     async def execute(
-        self, talent_id: str, context: str, *, task_id: str = "adhoc"
+        self,
+        talent_id: str,
+        context: str,
+        *,
+        task_id: str = "adhoc",
+        max_output_tokens: int | None = None,
     ) -> AgentResult:
-        """执行一次员工任务。所有失败都转换为明确的 VesselError 子类。"""
+        """执行一次员工任务。所有失败都转换为明确的 VesselError 子类。
+
+        max_output_tokens 只覆盖本次调用的输出上限，例如顾问意见使用更短的上限。
+        """
         talent = self.load(talent_id)
         preferred = talent.model or self._default_model
         model = preferred
@@ -175,11 +203,15 @@ class Vessel:
                 async with self._semaphore:
                     response = await asyncio.wait_for(
                         self._provider.complete(
-                            talent.system_prompt,
+                            self._compose_system_prompt(talent),
                             context,
                             model=model,
                             schema=talent.output_schema,
-                            max_tokens=self._max_output_tokens,
+                            max_tokens=(
+                                max(1, max_output_tokens)
+                                if max_output_tokens is not None
+                                else self._max_output_tokens
+                            ),
                         ),
                         timeout=self._timeout,
                     )
@@ -288,6 +320,9 @@ class Vessel:
             budget_ratio=budget_ratio,
             downgraded=downgraded,
             budget_reason=budget_reason,
+            talent_version=(
+                f"{talent.id}@v{talent.version}" if talent.version else "baseline"
+            ),
         )
 
     def _validate(self, talent: TalentSpec, raw: str) -> BaseModel:

@@ -22,3 +22,7 @@ allowed_tools:
   - run_tests
   - write_review
 output_schema: review
+checklist:
+  - "机械门禁 report.passed 为 false 时，绝对不能给 PASS"
+  - "unverified 项不得当作已验证通过，必须在 issues 中点明未被验证的玩法"
+  - "代码未实现 PRD 声明的功能、操作或失败条件时给 ITERATE"

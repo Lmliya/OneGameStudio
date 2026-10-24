@@ -26,10 +26,12 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from backend.budget import BudgetGuard
 from backend.core.vessel import (
+    AgentResult,
     OutputParseError,
     OutputValidationError,
     Vessel,
@@ -39,7 +41,11 @@ from backend.gate import GateUnavailableError, run_mechanical_gate
 from backend.marketing import find_fabricated_claims, render_marketing
 from backend.models.contract import TaskRecord, TaskStatus
 from backend.models.events import AgentStatus, EventType, TokenUsage, TraceEvent
+from backend.models.sop import SOPMode
+from backend.models.version import GameVersion
 from backend.schemas import (
+    CreativeProposal,
+    DeliveryAssessment,
     GameArtifact,
     GamePRD,
     GateCheck,
@@ -50,6 +56,7 @@ from backend.schemas import (
 )
 from backend.store import TaskStore
 from backend.tools import DEFAULT_REGISTRY, ToolPolicyError, ToolRegistry
+from backend.workflow.sop import select_sop
 from backend.workflow.state_machine import assert_transition
 
 
@@ -71,6 +78,16 @@ class TaskCancelledError(WorkflowError):
 
 class StageExecutionError(WorkflowError):
     """阶段执行的确定性检查失败（如产物不合法）。"""
+
+
+@dataclass
+class _ConflictOutcome:
+    """Conflict Gate 的真实结果，用于后续 COO 决策与事件记录。"""
+
+    creative: CreativeProposal | None = None
+    delivery: DeliveryAssessment | None = None
+    revision_rounds: int = 0
+    parallel_wall_ms: int = 0
 
 
 def render_prd(prd: GamePRD) -> str:
@@ -126,6 +143,7 @@ class WorkflowEngine:
         stage_min_seconds: float = 0.0,
         tools: ToolRegistry = DEFAULT_REGISTRY,
         budget: BudgetGuard | None = None,
+        opinion_max_output_tokens: int = 600,
     ) -> None:
         self._vessel = vessel
         self._store = store
@@ -134,6 +152,7 @@ class WorkflowEngine:
         self._stage_min = max(0.0, stage_min_seconds)
         self._tools = tools
         self._budget_guard = budget
+        self._opinion_max_tokens = max(1, opinion_max_output_tokens)
         self._running: set[str] = set()
         self._cancel_requested: set[str] = set()
         self._cancel_times: dict[str, datetime] = {}
@@ -149,8 +168,13 @@ class WorkflowEngine:
         if task_id in self._running:
             raise TaskAlreadyRunningError(f"任务已在执行：{task_id}")
         self._running.add(task_id)
+        started = time.perf_counter()
         try:
-            return await self._run(task_id)
+            record = await self._run(task_id)
+            # 真实墙钟耗时；失败与取消同样记录，便于比较不同 SOP 的实际成本
+            record.metrics.elapsed_ms = int((time.perf_counter() - started) * 1000)
+            self._store.save(record)
+            return record
         finally:
             self._running.discard(task_id)
             self._cancel_requested.discard(task_id)
@@ -202,17 +226,83 @@ class WorkflowEngine:
         if self._budget_guard is not None:
             record.budget = self._budget_guard.register(task_id)
 
+        # 阶段 9：确定 SOP。手动选择优先；自动选择必须把原因写入任务与事件。
+        requested = record.sop_mode
+        mode, reason = select_sop(
+            record.requirement,
+            requested,
+            source_version_id=record.source_version_id,
+        )
+        record.sop_mode = mode
+        record.sop_reason = reason
+        record.conflict_decision = None
+        record.creative_talent_version = None
+        record.delivery_talent_version = None
+        self._emit(
+            record,
+            EventType.SOP_SELECTED,
+            f"SOP：{mode.value.upper()}（{reason}）",
+            data={
+                "mode": mode.value,
+                "reason": reason,
+                "manual": requested is not None,
+                "source_version_id": record.source_version_id,
+            },
+        )
+
         try:
-            # ---------- COO ----------
+            # ---------- Conflict Gate + COO ----------
             self._transition(record, TaskStatus.PLANNING)
             self._check_cancel(record)
-            self._agent(record, "coo", AgentStatus.WORKING, "正在制定游戏方案")
+            conflict = await self._conflict_stage(record)
+            record.creative_talent_version = record.talent_versions.get("creative")
+            record.delivery_talent_version = record.talent_versions.get("delivery")
+            self._check_cancel(record)
+
+            has_opinions = conflict.creative is not None or conflict.delivery is not None
+            self._agent(
+                record,
+                "coo",
+                AgentStatus.WORKING,
+                "正在汇总双方意见并制定方案" if has_opinions else "正在制定游戏方案",
+            )
             self._use_tool(record, "coo", "read_requirement")
-            prd: GamePRD = await self._call(record, "coo", record.requirement)
+            prd: GamePRD = await self._call(
+                record, "coo", self._coo_context(record, conflict)
+            )
             self._check_cancel(record)
             self._agent(record, "coo", AgentStatus.COMPLETED, "游戏方案已完成")
             self._use_tool(record, "coo", "write_prd")
             self._write(record, "prd.md", render_prd(prd))
+
+            if has_opinions and prd.conflict_decision is None:
+                raise StageExecutionError(
+                    "COO 收到创意与交付意见，但没有输出 conflict_decision"
+                )
+            record.conflict_decision = prd.conflict_decision
+            if prd.conflict_decision is not None:
+                self._use_tool(record, "coo", "write_decision")
+                self._write(
+                    record,
+                    "conflict_decision.json",
+                    prd.conflict_decision.model_dump_json(indent=2),
+                )
+                self._emit(
+                    record,
+                    EventType.CONFLICT_RESOLVED,
+                    "COO 裁决："
+                    f"{prd.conflict_decision.decision}（{prd.conflict_decision.rationale}）",
+                    agent="coo",
+                    result="ok",
+                    data={
+                        "decision": prd.conflict_decision.model_dump(),
+                        "sop_mode": mode.value,
+                        "revision_rounds": conflict.revision_rounds,
+                        "parallel_wall_ms": conflict.parallel_wall_ms,
+                        "creative_talent_version": record.creative_talent_version,
+                        "delivery_talent_version": record.delivery_talent_version,
+                    },
+                )
             self._store.save(record)
 
             # ---------- Engineer + 机械门禁 ----------
@@ -221,7 +311,11 @@ class WorkflowEngine:
             self._agent(record, "engineer", AgentStatus.WORKING, "正在编写游戏代码")
             self._use_tool(record, "engineer", "read_prd")
             game: GameArtifact = await self._call(
-                record, "engineer", self._engineer_context(record.requirement, prd, None)
+                record,
+                "engineer",
+                self._engineer_context(
+                    record.requirement, prd, None, self._store.source_game_html(record)
+                ),
             )
             self._check_cancel(record)
             report = await self._apply_gate(record, game, prd)
@@ -288,6 +382,26 @@ class WorkflowEngine:
                     "审查通过" if review.verdict == "PASS" else f"发现 {len(review.issues)} 个问题",
                 )
 
+            # ---------- FAST：不调用 Marketer，直接交付 ----------
+            if mode is SOPMode.FAST:
+                self._finalize_version(record, mode)
+                self._transition(record, TaskStatus.COMPLETED)
+                self._emit(
+                    record,
+                    EventType.TASK_COMPLETED,
+                    "任务完成（FAST）：游戏已交付，无营销阶段",
+                    status=TaskStatus.COMPLETED.value,
+                    result="ok",
+                    data={
+                        "artifacts": sorted(record.artifacts),
+                        "sop_mode": mode.value,
+                        "version_id": record.final_version_id,
+                        "model_calls": record.metrics.model_calls,
+                    },
+                )
+                self._store.save(record)
+                return record
+
             # ---------- Marketer ----------
             self._transition(record, TaskStatus.MARKETING)
             self._check_cancel(record)
@@ -308,6 +422,7 @@ class WorkflowEngine:
             self._write(record, "marketing_kit.md", render_marketing(kit))
             self._agent(record, "marketer", AgentStatus.COMPLETED, "推广方案已完成")
 
+            self._finalize_version(record, mode)
             self._transition(record, TaskStatus.COMPLETED)
             self._emit(
                 record,
@@ -315,7 +430,12 @@ class WorkflowEngine:
                 "任务完成，游戏与营销素材已就绪",
                 status=TaskStatus.COMPLETED.value,
                 result="ok",
-                data={"artifacts": sorted(record.artifacts)},
+                data={
+                    "artifacts": sorted(record.artifacts),
+                    "sop_mode": mode.value,
+                    "version_id": record.final_version_id,
+                    "model_calls": record.metrics.model_calls,
+                },
             )
             self._store.save(record)
             return record
@@ -332,34 +452,41 @@ class WorkflowEngine:
 
     # ---------- 内部方法 ----------
 
-    async def _call(self, record: TaskRecord, talent_id: str, context: str):
-        """执行一个员工，返回已通过契约校验的输出对象。
+    async def _execute(
+        self,
+        record: TaskRecord,
+        talent_id: str,
+        context: str,
+        *,
+        max_output_tokens: int | None = None,
+    ) -> AgentResult:
+        """只执行模型调用，不写 record。
 
-        stage_min_seconds > 0 时，会等待到本阶段至少持续该时长再返回，
-        让驾驶舱能完整播放该员工的动画；等待期间员工状态保持 working/reviewing。
+        冲突阶段的并行调用使用它，避免两个协程同时修改 task.json；
+        调用结果由调用方串行提交。
         """
-        started = time.perf_counter()
-        try:
-            result = await self._vessel.execute(
-                talent_id, context, task_id=record.task_id
-            )
-        except VesselError as exc:
-            self._emit(
-                record,
-                EventType.AGENT_STATUS_CHANGED,
-                f"{talent_id} 执行失败：{exc}",
-                agent=talent_id,
-                status=None,
-                result="failed",
-                error=str(exc),
-            )
-            raise
+        record.metrics.model_calls += 1
+        return await self._vessel.execute(
+            talent_id,
+            context,
+            task_id=record.task_id,
+            max_output_tokens=max_output_tokens,
+        )
 
+    def _commit_result(
+        self, record: TaskRecord, talent_id: str, result: AgentResult
+    ) -> None:
+        """串行提交一次调用的用量、Talent 版本与事件。"""
         usage = TokenUsage.of(
             result.input_tokens, result.output_tokens, result.usage_source
         )
         if self._budget_guard is not None:
             record.budget = self._budget_guard.snapshot(record.task_id)
+
+        # 阶段 8：记录本次 Run 实际使用的 Talent 版本，便于回溯与回滚后核对
+        if result.talent_version:
+            record.talent_versions[talent_id] = result.talent_version
+            self._store.save(record)
 
         model_note = result.model or "unknown"
         self._emit(
@@ -378,6 +505,7 @@ class WorkflowEngine:
                 "cost_usd": result.cost_usd,
                 "cost_status": result.cost_status,
                 "downgraded": result.downgraded,
+                "talent_version": result.talent_version,
             },
             save=False,
         )
@@ -401,11 +529,346 @@ class WorkflowEngine:
                 },
             )
 
+    async def _call(
+        self,
+        record: TaskRecord,
+        talent_id: str,
+        context: str,
+        *,
+        max_output_tokens: int | None = None,
+    ):
+        """执行一个员工，返回已通过契约校验的输出对象。
+
+        stage_min_seconds > 0 时，会等待到本阶段至少持续该时长再返回，
+        让驾驶舱能完整播放该员工的动画；等待期间员工状态保持 working/reviewing。
+        """
+        started = time.perf_counter()
+        try:
+            result = await self._execute(
+                record, talent_id, context, max_output_tokens=max_output_tokens
+            )
+        except VesselError as exc:
+            self._emit(
+                record,
+                EventType.AGENT_STATUS_CHANGED,
+                f"{talent_id} 执行失败：{exc}",
+                agent=talent_id,
+                status=None,
+                result="failed",
+                error=str(exc),
+            )
+            raise
+
+        self._commit_result(record, talent_id, result)
         self._check_cancel(record)
+        await self._wait_stage(started)
+        return result.output
+
+    async def _wait_stage(self, started: float) -> None:
+        """保证单个阶段至少展示 stage_min_seconds。"""
         remaining = self._stage_min - (time.perf_counter() - started)
         if remaining > 0:
             await asyncio.sleep(remaining)
-        return result.output
+
+    async def _conflict_stage(self, record: TaskRecord) -> _ConflictOutcome:
+        """Conflict Gate：Creative 与 Delivery 提意见，最多一轮修订。
+
+        FAST 不调用；BALANCED 并行；CREATIVE 顺序挑战并允许恰好一轮修订。
+        并行调用只执行、不写 record，结果在这里串行提交，避免并发写坏 task.json。
+        """
+        mode = record.sop_mode
+        if mode is SOPMode.FAST:
+            return _ConflictOutcome()
+
+        source_html = (
+            self._store.source_game_html(record)
+            if mode is SOPMode.CREATIVE
+            else None
+        )
+        outcome = _ConflictOutcome()
+
+        if mode is SOPMode.BALANCED:
+            self._use_tool(record, "creative", "read_requirement")
+            self._use_tool(record, "delivery", "read_requirement")
+            self._agent(record, "creative", AgentStatus.WORKING, "正在评估创意方向")
+            self._agent(record, "delivery", AgentStatus.WORKING, "正在评估交付风险")
+
+            started = time.perf_counter()
+            results = await asyncio.gather(
+                self._execute(
+                    record,
+                    "creative",
+                    self._creative_context(record, source_html),
+                    max_output_tokens=self._opinion_max_tokens,
+                ),
+                self._execute(
+                    record,
+                    "delivery",
+                    self._delivery_context(record, source_html),
+                    max_output_tokens=self._opinion_max_tokens,
+                ),
+                return_exceptions=True,
+            )
+            outcome.parallel_wall_ms = int((time.perf_counter() - started) * 1000)
+
+            errors: list[BaseException] = []
+            successful: list[tuple[str, AgentResult]] = []
+            for talent_id, item in zip(("creative", "delivery"), results):
+                if isinstance(item, BaseException):
+                    errors.append(item)
+                    self._emit(
+                        record,
+                        EventType.AGENT_STATUS_CHANGED,
+                        f"{talent_id} 执行失败：{item}",
+                        agent=talent_id,
+                        status=AgentStatus.ERROR.value,
+                        result="failed",
+                        error=str(item),
+                        save=False,
+                    )
+                else:
+                    successful.append((talent_id, item))
+                    self._commit_result(record, talent_id, item)
+
+            # 任一成功结果都先落盘：失败时也保留已经产出的意见
+            for talent_id, result in successful:
+                if talent_id == "creative":
+                    outcome.creative = result.output
+                    self._record_creative(record, outcome.creative, round_no=1)
+                else:
+                    outcome.delivery = result.output
+                    self._record_delivery(record, outcome.delivery)
+
+            await self._wait_stage(started)
+            if errors:
+                first = errors[0]
+                if isinstance(first, Exception):
+                    raise first
+                raise StageExecutionError(str(first))
+
+            self._agent(
+                record,
+                "creative",
+                AgentStatus.COMPLETED,
+                f"创意提案：{outcome.creative.innovation}",
+            )
+            self._agent(
+                record,
+                "delivery",
+                AgentStatus.COMPLETED,
+                f"交付判断：{outcome.delivery.feasibility}",
+            )
+            return outcome
+
+        # CREATIVE：策划提案 → 交付挑战 → 若存在风险则最多一轮修订
+        self._use_tool(record, "creative", "read_requirement")
+        if source_html is not None:
+            self._use_tool(record, "creative", "read_game")
+        self._agent(record, "creative", AgentStatus.WORKING, "正在提出创意提案")
+        creative: CreativeProposal = await self._call(
+            record,
+            "creative",
+            self._creative_context(record, source_html),
+            max_output_tokens=self._opinion_max_tokens,
+        )
+        self._agent(
+            record, "creative", AgentStatus.COMPLETED, f"创意提案：{creative.innovation}"
+        )
+        self._record_creative(record, creative, round_no=1)
+
+        self._use_tool(record, "delivery", "read_requirement")
+        self._agent(record, "delivery", AgentStatus.WORKING, "正在挑战创意提案")
+        delivery: DeliveryAssessment = await self._call(
+            record,
+            "delivery",
+            self._delivery_context(record, source_html, creative),
+            max_output_tokens=self._opinion_max_tokens,
+        )
+        self._agent(
+            record,
+            "delivery",
+            AgentStatus.COMPLETED,
+            f"交付判断：{delivery.feasibility}",
+        )
+        self._record_delivery(record, delivery)
+
+        if delivery.feasibility != "feasible":
+            # 整个 Run 最多只允许这一轮修订
+            outcome.revision_rounds = 1
+            self._agent(record, "creative", AgentStatus.WORKING, "正在回应交付挑战")
+            revised: CreativeProposal = await self._call(
+                record,
+                "creative",
+                self._revision_context(record, creative, delivery),
+                max_output_tokens=self._opinion_max_tokens,
+            )
+            self._agent(
+                record,
+                "creative",
+                AgentStatus.COMPLETED,
+                f"修订提案：{revised.innovation}",
+            )
+            creative = revised
+            self._record_creative(record, creative, round_no=2)
+
+        outcome.creative = creative
+        outcome.delivery = delivery
+        return outcome
+
+    def _record_creative(
+        self, record: TaskRecord, proposal: CreativeProposal, *, round_no: int
+    ) -> None:
+        if round_no > 1:
+            # 修订前的提案留档，避免被覆盖后失去审计依据
+            self._store.snapshot(
+                record,
+                "creative_proposal.json",
+                f"history/creative_proposal.round{round_no - 1}.json",
+            )
+        self._use_tool(record, "creative", "write_creative")
+        self._write(
+            record, "creative_proposal.json", proposal.model_dump_json(indent=2)
+        )
+        self._emit(
+            record,
+            EventType.CONFLICT_OPINION,
+            f"创意总监：{proposal.innovation}",
+            agent="creative",
+            result="ok",
+            data={"role": "creative", "round": round_no, "proposal": proposal.model_dump()},
+        )
+
+    def _record_delivery(
+        self, record: TaskRecord, assessment: DeliveryAssessment
+    ) -> None:
+        self._use_tool(record, "delivery", "write_delivery")
+        self._write(
+            record, "delivery_assessment.json", assessment.model_dump_json(indent=2)
+        )
+        self._emit(
+            record,
+            EventType.CONFLICT_OPINION,
+            f"交付总监：{assessment.feasibility} / {assessment.risk}",
+            agent="delivery",
+            result="ok",
+            data={
+                "role": "delivery",
+                "assessment": assessment.model_dump(),
+            },
+        )
+
+    @staticmethod
+    def _creative_context(record: TaskRecord, source_html: str | None) -> str:
+        context = (
+            "你是创意总监。请基于以下信息提出一个最重要的创意建议。\n\n"
+            f"用户需求：{record.requirement}\n\n"
+            "要求：只提一个建议；说明玩家价值、实现复杂度、优先级与依据；"
+            "依据不足时明确说明不确定性，不得臆造用户数据或已实现功能。"
+        )
+        if source_html:
+            context += (
+                "\n\n历史版本参考代码（分支基线，请在此基础上提出改进）：\n"
+                f"{source_html}"
+            )
+        return context
+
+    @staticmethod
+    def _delivery_context(
+        record: TaskRecord,
+        source_html: str | None,
+        creative: CreativeProposal | None = None,
+    ) -> str:
+        context = (
+            "你是交付总监。请评估以下需求的交付风险，并给出可执行的简化建议。\n\n"
+            f"用户需求：{record.requirement}\n\n"
+            "要求：指出最大风险、可行性、简化建议、优先级与依据；"
+            "若方案可以稳定交付，请明确判定 feasible，不要为了反对而反对。"
+        )
+        if source_html:
+            context += f"\n\n历史版本参考代码：\n{source_html}"
+        if creative is not None:
+            context += (
+                "\n\n冲突阶段：交付总监挑战创意提案。"
+                f"\n创意总监提案：\n{creative.model_dump_json(indent=2)}"
+            )
+        return context
+
+    @staticmethod
+    def _revision_context(
+        record: TaskRecord,
+        creative: CreativeProposal,
+        delivery: DeliveryAssessment,
+    ) -> str:
+        return (
+            "冲突阶段：这是唯一一轮修订。请回应交付总监的挑战，"
+            "给出修订后的一个最重要创意建议。\n\n"
+            f"用户需求：{record.requirement}\n\n"
+            f"你上一轮提案：\n{creative.model_dump_json(indent=2)}\n\n"
+            f"交付总监意见：\n{delivery.model_dump_json(indent=2)}\n\n"
+            "要求：最多修订一轮；若认同交付意见，请收敛方案并说明；不要重复完整需求。"
+        )
+
+    @staticmethod
+    def _coo_context(record: TaskRecord, conflict: _ConflictOutcome) -> str:
+        context = f"用户需求：{record.requirement}\n\n请输出 PRD。"
+        if conflict.creative is not None or conflict.delivery is not None:
+            if conflict.creative is not None:
+                context += (
+                    "\n\n创意总监意见：\n"
+                    f"{conflict.creative.model_dump_json(indent=2)}"
+                )
+            if conflict.delivery is not None:
+                context += (
+                    "\n\n交付总监意见：\n"
+                    f"{conflict.delivery.model_dump_json(indent=2)}"
+                )
+            context += (
+                "\n\n决策规则：\n"
+                "1. 用户明确要求优先于任何角色建议。\n"
+                "2. 必须输出 conflict_decision，decision 为 adopt / simplify / reject。\n"
+                "3. summary 汇总双方观点，rationale 说明决策理由，不得留空。\n"
+                "4. 不得为了折中而牺牲机械门禁、审查或必要测试。"
+            )
+        return context
+
+    def _finalize_version(self, record: TaskRecord, mode: SOPMode) -> GameVersion:
+        """写入不可变游戏版本记录；历史版本不删除、不覆盖。"""
+        versions = self._store.list_versions(record.task_id)
+        number = max((item.version_number for item in versions), default=0) + 1
+        version_id = f"{record.task_id}-v{number}"
+        parent = versions[-1].version_id if versions else None
+        html = (self._store.task_dir(record.task_id) / "index.html").read_text(
+            encoding="utf-8"
+        )
+        version = GameVersion(
+            version_id=version_id,
+            version_number=number,
+            task_id=record.task_id,
+            run_id=record.run_id,
+            parent_version_id=parent,
+            source_version_id=record.source_version_id,
+            source_sha256=record.source_sha256,
+            sop_mode=mode,
+            sop_reason=record.sop_reason,
+            conflict_decision=record.conflict_decision,
+            creative_talent_version=record.creative_talent_version,
+            delivery_talent_version=record.delivery_talent_version,
+            artifact_path=f"versions/{version_id}.html",
+        )
+        self._store.save_version(record, version, html)
+        self._emit(
+            record,
+            EventType.ARTIFACT_CREATED,
+            f"生成游戏版本 {version_id}",
+            result="ok",
+            data={
+                "version_id": version_id,
+                "version_number": number,
+                "source_version_id": record.source_version_id,
+                "sop_mode": mode.value,
+            },
+        )
+        return version
 
     def _use_tool(self, record: TaskRecord, agent: str, tool: str) -> None:
         """Harness 2：运行时工具校验，并把每次工具调用写进事件流留痕。"""
@@ -591,9 +1054,18 @@ class WorkflowEngine:
 
     @staticmethod
     def _engineer_context(
-        requirement: str, prd: GamePRD, review: ReviewReport | None
+        requirement: str,
+        prd: GamePRD,
+        review: ReviewReport | None,
+        source_html: str | None = None,
     ) -> str:
         context = f"需求：{requirement}\n\nPRD：\n{prd.model_dump_json(indent=2)}"
+        if source_html:
+            context += (
+                "\n\n历史版本参考代码（请在此基础上做增量修改，只改需求相关部分，"
+                "保留其余已验证逻辑）：\n"
+                f"{source_html}"
+            )
         if review is not None:
             issues = "\n".join(
                 f"- [{issue.severity}] {issue.description} -> {issue.suggestion}"

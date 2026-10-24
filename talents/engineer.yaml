@@ -11,3 +11,7 @@ allowed_tools:
   - write_game
   - read_review
 output_schema: game
+checklist:
+  - "产物必须是单文件 HTML5，不引用任何外部资源或 CDN"
+  - "实现 PRD 声明的主要玩法与操作方式"
+  - "暴露 window.__ogsProbe 供机械门禁读取状态"
