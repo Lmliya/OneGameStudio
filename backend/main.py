@@ -8,18 +8,19 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from backend.budget import BudgetGuard
 from backend.bus import EventBus
 from backend.config import get_settings
 from backend.core.vessel import Vessel
 from backend.models.contract import TaskCreateRequest, TaskRecord
 from backend.providers import build_provider
 from backend.store import TaskNotFoundError, TaskStore
-from backend.workflow import WorkflowEngine
+from backend.workflow import TaskNotRunnableError, WorkflowEngine
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = ROOT_DIR / "frontend"
 
-app = FastAPI(title="OneGameStudio", version="0.3.0")
+app = FastAPI(title="OneGameStudio", version="0.7.0")
 settings = get_settings()
 
 
@@ -30,15 +31,28 @@ def _resolve(path: Path) -> Path:
 
 store = TaskStore(_resolve(settings.output_dir))
 bus = EventBus()
+budget_guard = BudgetGuard.from_settings(settings)
+# Mock 模式下实际发起的是 mock 调用，预算记账也应如实使用 "mock" 作为模型名
+runtime_model = "mock" if settings.mock_mode else settings.llm_model
 vessel = Vessel(
     build_provider(settings),
     talents_dir=_resolve(settings.talents_dir),
-    default_model=settings.llm_model,
+    default_model=runtime_model,
     timeout_seconds=settings.request_timeout_seconds,
     budget_usd=settings.budget_usd,
+    guard=budget_guard,
+    max_output_tokens=settings.max_output_tokens,
+    max_concurrent_calls=settings.max_concurrent_calls,
+    max_retries=settings.provider_max_retries,
+    retry_backoff_seconds=settings.provider_retry_backoff_seconds,
 )
 engine = WorkflowEngine(
-    vessel, store, max_fix_rounds=settings.max_fix_rounds, on_event=bus.publish
+    vessel,
+    store,
+    max_fix_rounds=settings.max_fix_rounds,
+    on_event=bus.publish,
+    stage_min_seconds=settings.stage_min_seconds,
+    budget=budget_guard,
 )
 
 # 持有后台任务引用，防止被垃圾回收
@@ -107,6 +121,16 @@ async def create_task(request: TaskCreateRequest) -> TaskRecord:
 @app.get("/api/tasks/{task_id}", response_model=TaskRecord)
 def get_task(task_id: str) -> TaskRecord:
     return _load_or_404(task_id)
+
+
+@app.post("/api/tasks/{task_id}/cancel", response_model=TaskRecord, status_code=202)
+def cancel_task(task_id: str) -> TaskRecord:
+    """请求取消任务：运行中的任务会在下一个安全点停止，已生成产物全部保留。"""
+    _load_or_404(task_id)
+    try:
+        return engine.cancel(task_id)
+    except TaskNotRunnableError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/api/tasks/{task_id}/artifacts")

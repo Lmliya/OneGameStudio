@@ -18,5 +18,7 @@ system_prompt: |
   5. 你只提交审查结论，不要输出修改后的代码。
 model: null
 allowed_tools:
-  - read_contract
+  - read_game
+  - run_tests
+  - write_review
 output_schema: review

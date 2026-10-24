@@ -7,5 +7,7 @@ system_prompt: |
   html 字段必须是完整可运行的 HTML 文档字符串。
 model: null
 allowed_tools:
-  - write_artifact
+  - read_prd
+  - write_game
+  - read_review
 output_schema: game

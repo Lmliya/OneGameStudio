@@ -1,5 +1,85 @@
 # 开发进度
 
+## 阶段 6：Mini-6 Harness（已完成）
+
+**日期**：2026-10-24
+
+目标是把散落的运行保障机制整合成统一 Harness，不重构工作流业务逻辑。详细机制与边界见 [harness.md](harness.md)。
+
+### 审计结论
+
+| Harness       | 阶段 6 之前                                   | 本阶段补齐                                                                       |
+| ------------- | --------------------------------------------- | -------------------------------------------------------------------------------- |
+| Task Contract | Pydantic + 9 态状态机已有                     | 新增 `cancelled` 终态、全部非终态到 cancelled 的迁移、预算快照字段、错误类型归档 |
+| Tool Policy   | 只有占位白名单 `read_contract/write_artifact` | 新建显式注册表、按角色校验、运行时拦截、YAML 改为真实工具名                      |
+| Quality Gate  | 阶段 3 已完整                                 | 文档化裁决边界，未改业务逻辑                                                     |
+| Recovery      | 2 次修复、超时、错误落盘、并发保护已有        | 新增 provider 有限重试、任务取消、终态不可再执行                                 |
+| Budget Guard  | Vessel 实例级累计、费用恒 0                   | 单任务预算、70% 降级、100% 阻断、可配置价格、未知用量标记、限并发                |
+| Event Trace   | 11 类事件，字段塞在 `data`                    | 统一顶层 `model/duration_ms/token_usage/result/error`，新增 3 类事件             |
+
+### 已实现
+
+- **Harness 1**：`TaskStatus.CANCELLED`；`ALLOWED_TRANSITIONS` 覆盖取消；`TaskRecord.budget`、`cancel_requested_at`；终态任务 `TaskNotRunnableError`。
+- **Harness 2**：`backend/tools.py` 注册 9 个工具与 `ROLE_TOOLS`；加载期（`talents.py`）与运行时（`engine::_use_tool`）双重校验；不注册任何 shell/subprocess 能力；每次调用写 `tool.called`。
+- **Harness 3**：沿用阶段 3 双层审查；门禁 fail 强制 ITERATE、Reviewer 输出不可解析即终止。
+- **Harness 4**：Vessel 有限重试（异常重试、超时不重试、指数退避）；`POST /api/tasks/{id}/cancel`；取消在安全点退出且保留全部产物；同一任务并发与终态重跑均被拒绝。
+- **Harness 5**：`backend/budget.py`（`BudgetGuard`）；`MODEL_PRICES` 价格表、`LIGHT_MODEL`、`BUDGET_SOFT_RATIO`、`MAX_OUTPUT_TOKENS`、`MAX_CONCURRENT_CALLS`；provider 支持 `max_tokens` 与 `usage_source`；费用 `estimated` / `unknown` 双状态，绝不把未知写成 0。
+- **Harness 6**：`TraceEvent` 统一字段并贯穿 Vessel、引擎、落盘与 WebSocket；新增 `tool.called`、`budget.updated`、`task.cancelled`。
+
+### 新增 / 修改文件
+
+```
+新建  backend/tools.py            工具注册表与权限校验
+新建  backend/budget.py           单任务预算守卫
+新建  tests/test_harness.py       14 个运行保障测试
+新建  docs/harness.md             六项机制说明与边界
+
+修改  backend/models/contract.py      cancelled 状态、预算快照、取消时间
+修改  backend/models/events.py        统一 TraceEvent 字段、TokenUsage
+修改  backend/workflow/state_machine.py  取消迁移
+修改  backend/workflow/engine.py      工具校验、取消、预算事件、统一追踪
+修改  backend/core/vessel.py          重试、限并发、预算接入、输出上限
+修改  backend/providers/*             max_tokens、usage_source、不硬编码模型名
+修改  backend/config.py               预算/重试/并发配置
+修改  backend/talents.py              按角色校验工具
+修改  backend/main.py                 装配 BudgetGuard、取消端点 v0.7.0
+修改  backend/store.py                沿用 TERMINAL_STATUSES 判断活跃任务
+修改  talents/*.yaml                  真实工具名
+修改  frontend/app.js                 cancelled 状态与事件
+修改  tests/test_workflow.py          provider 签名适配
+修改  tests/test_vessel.py            provider 签名适配
+修改  tests/test_talents.py           角色工具一致性 + 越权用例
+修改  tests/test_api.py               取消端点、快照字段用例
+修改  README.md / .env.example        新配置项
+```
+
+### 测试
+
+`uv run pytest -q` → **78 passed**（阶段 5 为 59，新增 19）。
+
+新增覆盖：工具注册表与角色一致、shell 工具被拒、运行时工具事件、provider 重试成功、运行中取消保留产物、终态取消/重跑被拒、70% 降级选模型、预算耗尽阻断、未知费用标记、统一追踪字段、失败保留日志产物、取消 API 与 WS 快照。
+
+### 端到端验收（Mock 模式，真实运行）
+
+| 场景                             | 结果                                                                                                                                          |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 贪吃蛇完整流程（`c5e97426164a`） | `completed`，`fix_attempts=1`，审查 `ITERATE → PASS`，6 个产物，61 条事件；四名员工工具集合与授权表完全一致                                   |
+| 70% 降级（`9eba54b444d0`）       | 预算 $0.005，前 4 次 `mock`，后 2 次 `mock-light`，`downgraded_calls=2`，任务完成                                                             |
+| 预算耗尽（`0bacc3f6de11`）       | 预算 $0.0005，第 3 次调用被拒，`blocked_calls=1`，`failed`，错误写明「估算 $0.0011 / 预算 $0.0005」；`prd.md`、`index.html`、`gate.json` 保留 |
+| 无价格表（`acf52a57ccfd`）       | 6 次调用，`spent_usd=0`、`unknown_cost_calls=6`、`cost_status="unknown"`，未伪造费用                                                          |
+| WebSocket                        | 首帧 `task.snapshot` 含 `budget` / `cancel_requested_at`；增量包含 `tool.called`、`budget.updated`、`review.completed`、`fix.requested`       |
+
+### 未解决问题
+
+1. 预算与 EventBus 都是进程内状态：重启清零，多 worker 各算各的。
+2. 取消是协作式的，不会中断在途 HTTP 请求，最长等待一个超时或阶段展示时长。
+3. 费用是「配置单价 × 估算 token」，不是账单；没有供应商对账。
+4. 调用前无法预知输入 token，最后一次调用可能让花费有限超额（实测最多一次调用）。
+5. 事件日志无上限，长任务需要归档/截断策略。
+6. 机械门禁的玩法断言仍依赖游戏暴露 `window.__ogsProbe`。
+
+---
+
 ## 阶段 5：像素办公室与实时驾驶舱（已完成）
 
 **日期**：2026-10-24
@@ -57,10 +137,31 @@
 | `frontend/app.js`            | 新增：WebSocket、快照恢复、产物渲染、日志                             |
 | `tests/test_api.py`          | 新增 6 个用例：预览 CSP、越权文件、单产物、历史、WS 快照、WS 未知任务 |
 
+### 补充调整（按用户反馈）
+
+**动画节奏（后端控制，前端不做假动画）**
+
+- 新增配置 `STAGE_MIN_SECONDS`（默认 6），`WorkflowEngine._call` 在模型返回后补足等待，保证每个员工的 `working/reviewing/fixing` 状态真实持续 ≥6 秒
+- 实测：COO 6.0s、Reviewer 6.0s、Marketer 6.0s；Engineer 因跨机械门禁为 9.0–10.5s
+- 完整播放顺序仍是 `COO → Engineer → Reviewer → Engineer(修复) → Reviewer → Marketer`
+- 测试引擎默认 `stage_min_seconds=0`，套件不会被 6 秒等待拖慢
+
+**动画独占**
+
+- `office.js` 增加 `activeAgent`，同一时刻最多只有一个员工是动画焦点
+- 只有焦点员工有呼吸、敲键盘、屏幕背光与台灯光晕；`idle/completed` 完全静止
+- 画布分区域帧差实测：每一段只有对应员工区域发生变化
+
+**人物与办公室**
+
+- 人物改为坐在办公桌前、背对观众：只有后脑勺与耳机，不画五官；椅子在人物前方、桌子在后方，姓名与状态标签移到椅子下方
+- 新增装饰：地毯、睡猫、书架、饮水机、落地灯、挂钟、海报、置物架、白板便签、桌面台灯/文件/咖啡杯、两盆落地植物、垃圾桶、显示器散热孔与背光
+- 修复画布被 CSS 纵向拉伸的问题：`object-fit: contain`，保持 880×520 比例
+
 ### 测试
 
 ```
-uv run pytest -q  → 58 passed in 39.77s（最终回归）
+uv run pytest -q  → 59 passed in 40.10s（最终回归）
 ```
 
 ### 端到端验收（真实浏览器，Mock 模式）

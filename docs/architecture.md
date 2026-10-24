@@ -1,6 +1,6 @@
 # OneGameStudio 架构说明
 
-> 版本：v0.6（阶段 5：像素办公室与实时驾驶舱）
+> 版本：v0.7（阶段 6：Mini-6 Harness）
 > 本文只描述已实现的部分，未实现的内容标注为"规划中"。
 
 ## 1. 项目定位
@@ -200,6 +200,11 @@ Reviewer 只写 `review.json`，Marketer 只写 `marketing_kit.*`，两者都不
 
 员工状态只有 `idle / working / reviewing / fixing / completed / error`，**全部由后端事件驱动**。前端没有任何计时器或随机数伪造进度；刷新页面后用快照回放事件，画面立即恢复。
 
+- `activeAgent` 保证同一时刻最多只有一名员工播放动画，`idle/completed` 完全静止。
+- 员工动作需要真实时长支撑，因此节奏由后端 `STAGE_MIN_SECONDS`（默认 6 秒）控制：`WorkflowEngine._call` 在模型返回后补足等待，测试引擎默认 0，套件不受影响。
+- 人物为背对观众坐姿（后脑勺 + 耳机），桌子在后、椅子在前，姓名与状态标签位于椅子下方。
+- 画布以 `object-fit: contain` 保持 880×520 比例，避免 CSS 拉伸。
+
 ### 7.5.2 事件契约
 
 `TraceEvent` 是唯一事件模型，写入 `task.json` 与推送 WebSocket 使用同一份数据：
@@ -251,6 +256,7 @@ Reviewer 只写 `review.json`，Marketer 只写 `marketing_kit.*`，两者都不
 | ---- | --------------------------------------- | --------------------------------------- |
 | GET  | `/api/health`                           | 返回运行模式                            |
 | POST | `/api/tasks`                            | 202，后台执行；同需求运行中任务返回 409 |
+| POST | `/api/tasks/{task_id}/cancel`           | 202，取消任务；终态任务返回 409         |
 | GET  | `/api/tasks/{task_id}`                  | 任务状态与事件                          |
 | GET  | `/api/tasks/{task_id}/artifacts`        | 产物文件名到内容的映射                  |
 | GET  | `/api/tasks/{task_id}/artifacts/{file}` | 单个产物（白名单校验）                  |
@@ -285,14 +291,16 @@ Reviewer 只写 `review.json`，Marketer 只写 `marketing_kit.*`，两者都不
 
 ## 10. Mini-6 落位情况
 
-| 能力          | 当前状态                                                |
-| ------------- | ------------------------------------------------------- |
-| Task Contract | 已实现：任务记录 + 四类输出契约                         |
-| Tool Policy   | 配置层白名单；运行时拦截待后续阶段                      |
-| Quality Gate  | 已实现双层：Playwright 机械门禁 + AI 审查               |
-| Recovery      | 已实现有限重试（`max_fix_rounds`）+ 版本快照            |
-| Budget Guard  | `Vessel` 实例内累计熔断，同一任务共用同一 Vessel        |
-| Event Trace   | 已实现落盘 + 实时推送：`task.json` 全量事件 + WebSocket |
+阶段 6 已把六项机制整合为统一 Harness，详见 [harness.md](harness.md)。
+
+| 能力          | 实现位置                                                                    |
+| ------------- | --------------------------------------------------------------------------- |
+| Task Contract | `models/contract.py` + `workflow/state_machine.py`（10 态，含 cancelled）   |
+| Tool Policy   | `tools.py` 注册表 + `talents.py` 加载期校验 + `engine._use_tool` 运行时校验 |
+| Quality Gate  | `gate/mechanical.py` + `engine._review`（后端强制裁决）                     |
+| Recovery      | `core/vessel.py`（重试/超时）+ `engine.cancel` + `main.py` 取消端点         |
+| Budget Guard  | `budget.py`（单任务预算、70% 降级、阻断、价格可配置、限并发）               |
+| Event Trace   | `models/events.py` 统一字段 + `engine._emit` 落盘 + `bus.py` + WS           |
 
 ## 11. 运行依赖
 

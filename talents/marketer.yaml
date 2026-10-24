@@ -32,5 +32,7 @@ system_prompt: |
   指标只写可观察的维度（如曝光量、收藏数、评论数），不要写具体数值。
 model: null
 allowed_tools:
-  - read_contract
+  - read_prd
+  - read_review
+  - write_marketing
 output_schema: marketing

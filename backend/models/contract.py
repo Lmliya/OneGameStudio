@@ -9,11 +9,12 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from backend.budget import TaskBudget
 from backend.models.events import TraceEvent
 
 
 class TaskStatus(str, Enum):
-    """任务状态。终态：completed / failed / needs_attention。"""
+    """任务状态。终态：completed / failed / needs_attention / cancelled。"""
 
     PENDING = "pending"
     PLANNING = "planning"
@@ -24,10 +25,16 @@ class TaskStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     NEEDS_ATTENTION = "needs_attention"
+    CANCELLED = "cancelled"
 
 
 TERMINAL_STATUSES: frozenset[TaskStatus] = frozenset(
-    {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.NEEDS_ATTENTION}
+    {
+        TaskStatus.COMPLETED,
+        TaskStatus.FAILED,
+        TaskStatus.NEEDS_ATTENTION,
+        TaskStatus.CANCELLED,
+    }
 )
 
 
@@ -48,6 +55,10 @@ class TaskRecord(BaseModel):
     )
     events: list[TraceEvent] = Field(default_factory=list)
     error: str | None = None
+    # Harness 5：本任务预算快照（估算，不是账单）
+    budget: TaskBudget | None = None
+    # Harness 4：取消请求时间，便于追溯「谁在什么时候取消了任务」
+    cancel_requested_at: datetime | None = None
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 

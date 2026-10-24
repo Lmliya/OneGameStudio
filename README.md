@@ -32,7 +32,7 @@ curl http://127.0.0.1:8000/api/health
 | **Marketing** | 定位、Slogan、两篇小红书文案、七天推广计划     |
 | **Logs**      | 全量事件流                                     |
 
-底部事件条滚动显示最近事件。刷新页面会自动恢复当前任务，WebSocket 断线后自动重连（1s → 8s 退避）。所有员工状态都来自后端事件，没有前端伪造的进度动画。
+底部事件条滚动显示最近事件。刷新页面会自动恢复当前任务，WebSocket 断线后自动重连（1s → 8s 退避）。所有员工状态都来自后端事件，没有前端伪造的进度动画；同一时刻只有当前员工在动，每段默认至少 6 秒（`STAGE_MIN_SECONDS`）。
 
 ## 创建一个任务
 
@@ -49,6 +49,7 @@ curl -X POST http://127.0.0.1:8000/api/tasks \
 curl http://127.0.0.1:8000/api/tasks/<task_id>
 curl http://127.0.0.1:8000/api/tasks/<task_id>/artifacts
 curl http://127.0.0.1:8000/api/tasks/<task_id>/history
+curl -X POST http://127.0.0.1:8000/api/tasks/<task_id>/cancel
 ```
 
 实时事件走 WebSocket（连上立即收到 `task.snapshot` 快照）：
@@ -116,22 +117,31 @@ pending → planning(COO) → coding(Engineer) → reviewing(Reviewer)
         → marketing(Marketer) → completed
 ```
 
-未通过且修复次数用尽 → `needs_attention`；任一阶段异常 → `failed`，已产出文件保留。
+未通过且修复次数用尽 → `needs_attention`；任一阶段异常 → `failed`；用户主动取消 → `cancelled`。三种终态都会保留已产出文件。
 
-状态由 Python 状态机推进，模型无权修改。
+状态由 Python 状态机推进，模型无权修改。工具权限由 `backend/tools.py` 显式注册并在运行时校验，模型输出不可能变成 shell 命令。
+
+运行保障机制（六项 Harness）见 [docs/harness.md](docs/harness.md)。
 
 ## 配置项
 
-| 变量                      | 说明                                      |
-| ------------------------- | ----------------------------------------- |
-| `MOCK_MODE`               | `true` 时使用 MockProvider，不联网不花钱  |
-| `LLM_BASE_URL`            | OpenAI 兼容接口地址                       |
-| `LLM_API_KEY`             | 服务端密钥，仅在真实模式需要              |
-| `LLM_MODEL`               | 全局默认模型，可被 Talent 的 `model` 覆盖 |
-| `REQUEST_TIMEOUT_SECONDS` | 单次调用超时                              |
-| `BUDGET_USD`              | 单任务成本预算                            |
+| 变量                      | 说明                                             |
+| ------------------------- | ------------------------------------------------ |
+| `MOCK_MODE`               | `true` 时使用 MockProvider，不联网不花钱         |
+| `LLM_BASE_URL`            | OpenAI 兼容接口地址                              |
+| `LLM_API_KEY`             | 服务端密钥，仅在真实模式需要                     |
+| `LLM_MODEL`               | 全局默认模型，可被 Talent 的 `model` 覆盖        |
+| `REQUEST_TIMEOUT_SECONDS` | 单次调用超时                                     |
+| `STAGE_MIN_SECONDS`       | 每个员工的阶段最少展示时长（默认 6 秒，0 关闭）  |
+| `PROVIDER_MAX_RETRIES`    | provider 调用异常重试次数（超时不重试）          |
+| `BUDGET_USD`              | 单任务预算上限（按配置单价估算）                 |
+| `BUDGET_SOFT_RATIO`       | 预算使用比例达到该值后降级到轻量模型（默认 0.7） |
+| `LIGHT_MODEL`             | 轻量模型名，留空表示不降级                       |
+| `MAX_OUTPUT_TOKENS`       | 单次调用最大输出 token 数                        |
+| `MODEL_PRICES`            | 模型单价 JSON；留空则费用标记为 unknown          |
+| `MAX_CONCURRENT_CALLS`    | 并发模型调用上限（默认 1，防止预算超额）         |
 
-模型名与密钥不出现在业务代码中。
+模型名与密钥不出现在业务代码中；`MODEL_PRICES` 的估算值不是供应商账单。
 
 ## 目录结构
 
@@ -142,6 +152,8 @@ backend/
     config.py         全局配置
     schemas.py        输出契约
     talents.py        Talent 加载与校验
+    tools.py          工具注册表与权限校验
+    budget.py         单任务预算守卫
     store.py          任务持久化
     models/           TaskRecord / TalentSpec / TraceEvent
     core/vessel.py    员工执行容器
@@ -151,7 +163,7 @@ backend/
 frontend/             index.html / style.css / office.js / app.js
 talents/              四个员工的 YAML
 tests/                pytest
-docs/                 architecture.md / progress.md
+docs/                 architecture.md / harness.md / progress.md
 output/               任务产物（不入库）
 ```
 

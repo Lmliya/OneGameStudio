@@ -1,7 +1,7 @@
 """Talent 加载器：从 talents/*.yaml 读取并校验员工配置。
 
-安全约束：
-- allowed_tools 必须属于系统预定义的白名单，未授权工具直接拒绝加载。
+安全约束（Harness 2 Tool Policy）：
+- allowed_tools 必须已注册，且必须落在该员工角色的授权范围内；多申请即拒绝加载。
 - output_schema 必须已注册，避免模型输出无人校验。
 """
 
@@ -11,14 +11,11 @@ import yaml
 
 from backend.models.talent import TalentSpec
 from backend.schemas import OUTPUT_SCHEMAS
-
-# 系统当前真正提供的工具。没有 shell、没有文件写入之外的能力。
-# 阶段 3 接入 Tool Policy 后，Vessel 会再次按此白名单拦截实际调用。
-ALLOWED_TOOLS: frozenset[str] = frozenset({"read_contract", "write_artifact"})
+from backend.tools import DEFAULT_REGISTRY
 
 
 class TalentConfigError(RuntimeError):
-    """Talent 配置非法（缺字段、未知工具、未知 schema 等）。"""
+    """Talent 配置非法（缺字段、未知工具、越权工具、未知 schema 等）。"""
 
 
 def load_talent(talent_id: str, talents_dir: Path) -> TalentSpec:
@@ -38,11 +35,19 @@ def load_talent(talent_id: str, talents_dir: Path) -> TalentSpec:
     except Exception as exc:  # noqa: BLE001 - 统一转为配置错误
         raise TalentConfigError(f"{path} 字段校验失败：{exc}") from exc
 
-    unknown_tools = set(talent.allowed_tools) - ALLOWED_TOOLS
+    unknown_tools = set(talent.allowed_tools) - DEFAULT_REGISTRY.names()
     if unknown_tools:
         raise TalentConfigError(
             f"{path} 申请了未授权工具：{sorted(unknown_tools)}"
-            f"（可用工具：{sorted(ALLOWED_TOOLS)}）"
+            f"（已注册：{sorted(DEFAULT_REGISTRY.names())}）"
+        )
+
+    allowed = DEFAULT_REGISTRY.allowed_for(talent_id)
+    overreach = set(talent.allowed_tools) - allowed
+    if overreach:
+        raise TalentConfigError(
+            f"{path} 申请了 {talent_id} 无权使用的工具：{sorted(overreach)}"
+            f"（该角色授权：{sorted(allowed)}）"
         )
 
     if talent.output_schema not in OUTPUT_SCHEMAS:

@@ -61,7 +61,7 @@ class ScriptedProvider(BaseProvider):
     def __init__(self, script: dict[str, list]) -> None:
         self._script = {k: list(v) for k, v in script.items()}
 
-    async def complete(self, system, user, *, model, schema=None):
+    async def complete(self, system, user, *, model, schema=None, max_tokens=None):
         queue = self._script.get(schema or "", [])
         if not queue:
             raise AssertionError(f"脚本中没有更多 '{schema}' 响应")
@@ -76,7 +76,7 @@ class SlowProvider(BaseProvider):
 
     default_model = "slow"
 
-    async def complete(self, system, user, *, model, schema=None):
+    async def complete(self, system, user, *, model, schema=None, max_tokens=None):
         import asyncio
 
         await asyncio.sleep(0.05)
@@ -311,3 +311,43 @@ async def test_fabricated_marketing_claims_keep_game(tmp_path: Path) -> None:
     assert (task_dir / "review.json").exists()
     assert not (task_dir / "marketing_kit.md").exists()
     assert not (task_dir / "marketing_kit.json").exists()
+
+
+async def test_stage_min_seconds_paces_each_agent(tmp_path: Path) -> None:
+    """stage_min_seconds > 0 时，每个员工的工作态必须至少持续该时长。"""
+    import time
+
+    provider = ScriptedProvider(
+        {
+            "prd": [PRD_JSON],
+            "game": [GAME_JSON],
+            "review": [REVIEW_PASS_JSON],
+            "marketing": [MARKETING_JSON],
+        }
+    )
+    store = TaskStore(tmp_path)
+    vessel = Vessel(
+        provider, talents_dir=TALENTS_DIR, default_model="test", budget_usd=10.0
+    )
+    engine = WorkflowEngine(vessel, store, stage_min_seconds=0.03)
+    record = store.create("做一个贪吃蛇游戏")
+
+    started = time.perf_counter()
+    result = await engine.start(record.task_id)
+    elapsed = time.perf_counter() - started
+
+    # 四个阶段：COO / Engineer / Reviewer / Marketer
+    assert result.status is TaskStatus.COMPLETED
+    assert elapsed >= 0.12
+
+    durations = []
+    active_at = None
+    for event in result.events:
+        if event.type.value != "agent.status_changed" or not event.agent:
+            continue
+        if event.status in {"working", "reviewing", "fixing"}:
+            active_at = event.created_at
+        elif event.status == "completed" and active_at is not None:
+            durations.append((event.created_at - active_at).total_seconds())
+            active_at = None
+    assert durations and min(durations) >= 0.02

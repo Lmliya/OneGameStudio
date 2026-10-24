@@ -41,14 +41,14 @@ class StaticProvider(BaseProvider):
     def __init__(self, text: str) -> None:
         self._text = text
 
-    async def complete(self, system, user, *, model, schema=None):
+    async def complete(self, system, user, *, model, schema=None, max_tokens=None):
         return ProviderResponse(text=self._text, model=model)
 
 
 class SlowProvider(BaseProvider):
     default_model = "slow"
 
-    async def complete(self, system, user, *, model, schema=None):
+    async def complete(self, system, user, *, model, schema=None, max_tokens=None):
         await asyncio.sleep(0.5)
         return ProviderResponse(text="{}", model=model)
 
@@ -80,7 +80,7 @@ async def test_uses_default_model_when_talent_model_empty() -> None:
     class Recorder(BaseProvider):
         default_model = "recorder"
 
-        async def complete(self, system, user, *, model, schema=None):
+        async def complete(self, system, user, *, model, schema=None, max_tokens=None):
             seen["model"] = model
             seen["schema"] = schema or ""
             return ProviderResponse(text='{"title":"x","genre":"y","core_loop":["a"],'

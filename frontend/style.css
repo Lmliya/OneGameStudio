@@ -195,8 +195,10 @@ button.ghost {
   width: 100%;
   min-height: 0;
   display: block;
+  /* 保持 880x520 的画面比例，避免 CSS 拉伸导致人物变形 */
+  object-fit: contain;
   image-rendering: pixelated;
-  background: #0a0c14;
+  background: #1d2230;
 }
 
 /* ---------- 右侧标签页 ---------- */
@@ -454,31 +456,33 @@ ul.plain {
 }
 
 .log-line {
-  display: flex;
-  gap: 8px;
+  /* 固定列宽 + 明确间距，长类型名不会再挤到消息列 */
+  display: grid;
+  grid-template-columns: 64px 88px 184px minmax(0, 1fr);
+  gap: 16px;
+  align-items: baseline;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .log-time {
   color: var(--muted);
-  flex: none;
 }
 
 .log-agent {
-  flex: none;
-  width: 76px;
   color: var(--accent-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .log-type {
-  flex: none;
-  width: 150px;
   color: var(--purple);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .log-msg {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }

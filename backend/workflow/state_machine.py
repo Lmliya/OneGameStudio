@@ -7,24 +7,39 @@
 from backend.models.contract import TERMINAL_STATUSES, TaskStatus
 
 ALLOWED_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
-    TaskStatus.PENDING: frozenset({TaskStatus.PLANNING, TaskStatus.FAILED}),
-    TaskStatus.PLANNING: frozenset({TaskStatus.CODING, TaskStatus.FAILED}),
-    TaskStatus.CODING: frozenset({TaskStatus.REVIEWING, TaskStatus.FAILED}),
+    TaskStatus.PENDING: frozenset(
+        {TaskStatus.PLANNING, TaskStatus.FAILED, TaskStatus.CANCELLED}
+    ),
+    TaskStatus.PLANNING: frozenset(
+        {TaskStatus.CODING, TaskStatus.FAILED, TaskStatus.CANCELLED}
+    ),
+    TaskStatus.CODING: frozenset(
+        {TaskStatus.REVIEWING, TaskStatus.FAILED, TaskStatus.CANCELLED}
+    ),
     TaskStatus.REVIEWING: frozenset(
         {
             TaskStatus.FIXING,
             TaskStatus.MARKETING,
             TaskStatus.NEEDS_ATTENTION,
             TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
         }
     ),
     TaskStatus.FIXING: frozenset(
-        {TaskStatus.REVIEWING, TaskStatus.NEEDS_ATTENTION, TaskStatus.FAILED}
+        {
+            TaskStatus.REVIEWING,
+            TaskStatus.NEEDS_ATTENTION,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        }
     ),
-    TaskStatus.MARKETING: frozenset({TaskStatus.COMPLETED, TaskStatus.FAILED}),
+    TaskStatus.MARKETING: frozenset(
+        {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+    ),
     TaskStatus.COMPLETED: frozenset(),
     TaskStatus.FAILED: frozenset(),
     TaskStatus.NEEDS_ATTENTION: frozenset(),
+    TaskStatus.CANCELLED: frozenset(),
 }
 
 

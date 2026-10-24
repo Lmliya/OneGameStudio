@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from backend.models.contract import TaskRecord, TaskStatus
+from backend.models.contract import TERMINAL_STATUSES, TaskRecord
 from backend.models.events import EventType, TraceEvent
 
 TASK_FILE = "task.json"
@@ -91,10 +91,9 @@ class TaskStore:
             if not (directory / TASK_FILE).exists():
                 continue
             record = self.load(directory.name)
-            if record.requirement == requirement and record.status not in {
-                TaskStatus.COMPLETED,
-                TaskStatus.FAILED,
-                TaskStatus.NEEDS_ATTENTION,
-            }:
+            if (
+                record.requirement == requirement
+                and record.status not in TERMINAL_STATUSES
+            ):
                 return record
         return None

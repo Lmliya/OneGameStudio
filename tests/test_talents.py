@@ -6,6 +6,7 @@ import pytest
 
 from backend.schemas import OUTPUT_SCHEMAS
 from backend.talents import TalentConfigError, list_talents, load_talent
+from backend.tools import ROLE_TOOLS
 
 TALENTS_DIR = Path(__file__).resolve().parents[1] / "talents"
 
@@ -18,6 +19,23 @@ def test_load_all_four_talents() -> None:
         assert talent.role
         assert talent.system_prompt
         assert talent.output_schema in OUTPUT_SCHEMAS
+
+
+def test_talent_tools_match_role_policy() -> None:
+    """YAML 里声明的工具必须与该角色的授权表完全一致。"""
+    talents = list_talents(TALENTS_DIR)
+    for talent_id, talent in talents.items():
+        assert set(talent.allowed_tools) == set(ROLE_TOOLS[talent_id])
+
+
+def test_talent_cannot_claim_other_role_tool(tmp_path: Path) -> None:
+    (tmp_path / "coo.yaml").write_text(
+        "name: COO\nrole: x\nsystem_prompt: x\noutput_schema: prd\n"
+        "allowed_tools:\n  - write_game\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(TalentConfigError, match="无权使用"):
+        load_talent("coo", tmp_path)
 
 
 def test_expected_output_schemas() -> None:

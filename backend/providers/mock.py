@@ -248,15 +248,19 @@ class MockProvider(BaseProvider):
         *,
         model: str,
         schema: str | None = None,
+        max_tokens: int | None = None,
     ) -> ProviderResponse:
+        _ = max_tokens  # Mock 不限制输出长度
         payload = self._payload(user, schema)
         text = json.dumps(payload, ensure_ascii=False)
         return ProviderResponse(
             text=text,
-            model="mock",
+            model=model or self.default_model,
             input_tokens=len(system + user) // 4,
             output_tokens=len(text) // 4,
             cost_usd=0.0,
+            # Mock 的 token 是按字符数估算，不是真实用量
+            usage_source="estimated",
         )
 
     def _payload(self, user: str, schema: str | None) -> dict:

@@ -3,6 +3,8 @@
 from backend.workflow.engine import (
     StageExecutionError,
     TaskAlreadyRunningError,
+    TaskCancelledError,
+    TaskNotRunnableError,
     WorkflowEngine,
     WorkflowError,
 )
@@ -12,6 +14,8 @@ __all__ = [
     "WorkflowEngine",
     "WorkflowError",
     "TaskAlreadyRunningError",
+    "TaskNotRunnableError",
+    "TaskCancelledError",
     "StageExecutionError",
     "InvalidTransitionError",
     "assert_transition",

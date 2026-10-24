@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 import backend.main as main
 from backend.core.vessel import Vessel
+from backend.models.contract import TaskStatus
 from backend.providers.mock import MockProvider
 from backend.store import TaskStore
 from backend.workflow import WorkflowEngine
@@ -172,3 +173,41 @@ def test_websocket_rejects_unknown_task(client: TestClient) -> None:
         with pytest.raises(Exception):
             message = websocket.receive_json()
             raise AssertionError(f"不应收到消息：{message}")
+
+
+def test_websocket_snapshot_has_unified_trace_fields(client: TestClient) -> None:
+    created = client.post("/api/tasks", json={"requirement": "字段契约测试"})
+    task_id = created.json()["task_id"]
+
+    with client.websocket_connect(f"/ws/tasks/{task_id}") as websocket:
+        snapshot = websocket.receive_json()["task"]
+
+    # Harness 5：预算快照字段存在（未执行时为 null）
+    assert "budget" in snapshot
+    # Harness 1：取消时间字段存在
+    assert "cancel_requested_at" in snapshot
+
+
+def test_cancel_pending_task_sets_cancelled(client: TestClient) -> None:
+    """尚未开始执行的任务可直接取消，且状态通过 WS 快照可见。"""
+    created = client.post("/api/tasks", json={"requirement": "取消测试"})
+    task_id = created.json()["task_id"]
+
+    response = client.post(f"/api/tasks/{task_id}/cancel")
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "cancelled"
+    with client.websocket_connect(f"/ws/tasks/{task_id}") as websocket:
+        snapshot = websocket.receive_json()["task"]
+    assert snapshot["status"] == "cancelled"
+    assert any(e["type"] == "task.cancelled" for e in snapshot["events"])
+
+
+def test_cancel_terminal_task_returns_409(client: TestClient) -> None:
+    created = client.post("/api/tasks", json={"requirement": "终态取消测试"})
+    task_id = created.json()["task_id"]
+    record = main.store.load(task_id)
+    record.status = TaskStatus.COMPLETED
+    main.store.save(record)
+
+    assert client.post(f"/api/tasks/{task_id}/cancel").status_code == 409

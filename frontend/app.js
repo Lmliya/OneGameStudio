@@ -36,6 +36,7 @@ const STATUS_CLASS = {
   completed: "badge-ok",
   failed: "badge-danger",
   needs_attention: "badge-warn",
+  cancelled: "badge-warn",
 };
 
 const STATUS_LABEL = {
@@ -48,6 +49,7 @@ const STATUS_LABEL = {
   completed: "已完成",
   failed: "失败",
   needs_attention: "待人工处理",
+  cancelled: "已取消",
 };
 
 const ESC = {
@@ -142,6 +144,9 @@ function applyEvent(event) {
       break;
     case "task.failed":
       setTaskStatus("failed");
+      break;
+    case "task.cancelled":
+      setTaskStatus("cancelled");
       break;
     default:
       break;
