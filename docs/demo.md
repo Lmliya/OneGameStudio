@@ -25,7 +25,11 @@ node cli/bin.js --demo
 | 最终版本       | `task.json` 的 `final_version_id`                    | 展示当时选定的最终版本                           |
 | Talent 记录    | `demo/evolution/`（部署时通过 `EVOLUTION_DIR` 指向） | 版本、检查清单与岗位启用状态                     |
 
-演示任务：`demo/tasks/adc5c4474a83`，需求为「把游戏背景颜色改成蓝色」，由 Mock 供应商生成。
+演示任务（按更新时间从新到旧，前端自动加载第一个）：
+
+- `demo/tasks/b1ee53da7c4c`：需求为「做一个红色背景的贪吃蛇小游戏」，由 Mock 供应商生成。
+  包含两个不可变版本：`V1` 原始贪吃蛇与 `V2` 红色主题；`V2` 为当前最终版本，可在版本下拉框中切换预览或回退。
+- `demo/tasks/adc5c4474a83`：需求为「把游戏背景颜色改成蓝色」，由 Mock 供应商生成。
 
 ## 3. 明确标识
 

@@ -906,7 +906,9 @@ async function loadSourceTasks() {
   if (!select) return;
   const previous = select.value;
   try {
-    const tasks = await fetch("/api/tasks").then((response) => response.json());
+    const tasks = await fetch("/api/tasks", { cache: "no-store" }).then(
+      (response) => response.json(),
+    );
     const options = ['<option value="">不使用来源版本</option>'];
     for (const task of Array.isArray(tasks) ? tasks : []) {
       const versionId = task.final_version_id || task.latest_version_id;
@@ -938,7 +940,9 @@ async function loadSourceTasks() {
 
 async function loadDemoTask() {
   try {
-    const demo = await fetch("/api/demo").then((r) => r.json());
+    const demo = await fetch("/api/demo", { cache: "no-store" }).then((r) =>
+      r.json(),
+    );
     const tasks = Array.isArray(demo.tasks) ? demo.tasks : [];
     const task = tasks.find((item) => item.status === "completed") || tasks[0];
     if (!task) {
@@ -959,7 +963,9 @@ async function loadDemoTask() {
 async function boot() {
   let health;
   try {
-    health = await fetch("/api/health").then((r) => r.json());
+    health = await fetch("/api/health", { cache: "no-store" }).then((r) =>
+      r.json(),
+    );
   } catch (error) {
     setConn("后端未连接", "badge-danger");
     return;

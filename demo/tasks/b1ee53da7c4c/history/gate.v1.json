@@ -1,0 +1,68 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "id": "html_structure",
+      "title": "HTML 基本结构",
+      "status": "pass",
+      "detail": "包含 html/body/script"
+    },
+    {
+      "id": "page_load",
+      "title": "页面加载",
+      "status": "pass",
+      "detail": "DOMContentLoaded 完成"
+    },
+    {
+      "id": "js_errors",
+      "title": "无未处理 JS 错误",
+      "status": "pass",
+      "detail": "未捕获到 pageerror"
+    },
+    {
+      "id": "network_isolation",
+      "title": "外部网络隔离",
+      "status": "pass",
+      "detail": "无外部请求"
+    },
+    {
+      "id": "game_area",
+      "title": "可识别的游戏区域",
+      "status": "pass",
+      "detail": "canvas 400x400"
+    },
+    {
+      "id": "restart_control",
+      "title": "存在开始/重开控件",
+      "status": "pass",
+      "detail": "重新开始"
+    },
+    {
+      "id": "arrow_keys",
+      "title": "方向键改变方向",
+      "status": "pass",
+      "detail": "{'x': 1, 'y': 0} -> {'x': 0, 'y': -1}（按键 ArrowUp）"
+    },
+    {
+      "id": "score_updates",
+      "title": "得分会更新",
+      "status": "pass",
+      "detail": "score 0 -> 1"
+    },
+    {
+      "id": "restart_after_gameover",
+      "title": "结束后可重新开始",
+      "status": "pass",
+      "detail": "点击重开后 over=False, score=0"
+    },
+    {
+      "id": "prd_acceptance",
+      "title": "PRD 验收项",
+      "status": "unverified",
+      "detail": "无法自动验证：功能：随机食物"
+    }
+  ],
+  "blocked_requests": [],
+  "duration_ms": 5795,
+  "engine": "playwright"
+}

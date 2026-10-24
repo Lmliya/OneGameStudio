@@ -1,0 +1,1067 @@
+{
+  "task_id": "b1ee53da7c4c",
+  "requirement": "做一个红色背景的贪吃蛇小游戏，要有计分和重新开始按钮",
+  "status": "completed",
+  "fix_attempts": 1,
+  "max_fix_rounds": 2,
+  "artifacts": {
+    "prd.md": "prd.md",
+    "index.html": "index.html",
+    "gate.json": "gate.json",
+    "review.json": "review.json"
+  },
+  "events": [
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "task.created",
+      "message": "任务已创建",
+      "agent": null,
+      "status": null,
+      "stage": "pending",
+      "created_at": "2026-10-24T14:27:22.543128Z",
+      "data": {},
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "sop.selected",
+      "message": "SOP：FAST（需求为短句局部修改，适用极速流程）",
+      "agent": null,
+      "status": null,
+      "stage": "pending",
+      "created_at": "2026-10-24T14:27:22.548581Z",
+      "data": {
+        "mode": "fast",
+        "reason": "需求为短句局部修改，适用极速流程",
+        "manual": false,
+        "source_version_id": null
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "task.status_changed",
+      "message": "pending -> planning",
+      "agent": null,
+      "status": "planning",
+      "stage": "planning",
+      "created_at": "2026-10-24T14:27:22.550438Z",
+      "data": {
+        "from": "pending",
+        "to": "planning"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "正在制定游戏方案",
+      "agent": "coo",
+      "status": "working",
+      "stage": "planning",
+      "created_at": "2026-10-24T14:27:22.550675Z",
+      "data": {},
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "tool.called",
+      "message": "coo 调用工具 read_requirement",
+      "agent": "coo",
+      "status": null,
+      "stage": "planning",
+      "created_at": "2026-10-24T14:27:22.550885Z",
+      "data": {
+        "tool": "read_requirement"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "coo 调用完成：mock · 206 tokens · 0ms",
+      "agent": "coo",
+      "status": null,
+      "stage": "planning",
+      "created_at": "2026-10-24T14:27:22.553712Z",
+      "data": {
+        "cost_usd": 0.0,
+        "cost_status": "unknown",
+        "downgraded": false,
+        "talent_version": "coo@v1"
+      },
+      "model": "mock",
+      "duration_ms": 0,
+      "token_usage": {
+        "input_tokens": 153,
+        "output_tokens": 53,
+        "total_tokens": 206,
+        "source": "estimated"
+      },
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "budget.updated",
+      "message": "任务预算：估算 $0.0000 / $1.0000（0%）",
+      "agent": "coo",
+      "status": null,
+      "stage": "planning",
+      "created_at": "2026-10-24T14:27:22.554006Z",
+      "data": {
+        "spent_usd": 0.0,
+        "budget_usd": 1.0,
+        "ratio": 0.0,
+        "calls": 1,
+        "downgraded": false,
+        "unknown_usage_calls": 0,
+        "cost_status": "unknown"
+      },
+      "model": "mock",
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "游戏方案已完成",
+      "agent": "coo",
+      "status": "completed",
+      "stage": "planning",
+      "created_at": "2026-10-24T14:27:28.552942Z",
+      "data": {},
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "tool.called",
+      "message": "coo 调用工具 write_prd",
+      "agent": "coo",
+      "status": null,
+      "stage": "planning",
+      "created_at": "2026-10-24T14:27:28.555310Z",
+      "data": {
+        "tool": "write_prd"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "artifact.created",
+      "message": "生成 prd.md",
+      "agent": null,
+      "status": null,
+      "stage": "planning",
+      "created_at": "2026-10-24T14:27:28.556847Z",
+      "data": {
+        "artifact": "prd.md"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "task.status_changed",
+      "message": "planning -> coding",
+      "agent": null,
+      "status": "coding",
+      "stage": "coding",
+      "created_at": "2026-10-24T14:27:28.565036Z",
+      "data": {
+        "from": "planning",
+        "to": "coding"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "正在编写游戏代码",
+      "agent": "engineer",
+      "status": "working",
+      "stage": "coding",
+      "created_at": "2026-10-24T14:27:28.566760Z",
+      "data": {},
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "tool.called",
+      "message": "engineer 调用工具 read_prd",
+      "agent": "engineer",
+      "status": null,
+      "stage": "coding",
+      "created_at": "2026-10-24T14:27:28.567303Z",
+      "data": {
+        "tool": "read_prd"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "engineer 调用完成：mock · 1029 tokens · 0ms",
+      "agent": "engineer",
+      "status": null,
+      "stage": "coding",
+      "created_at": "2026-10-24T14:27:28.571454Z",
+      "data": {
+        "cost_usd": 0.0,
+        "cost_status": "unknown",
+        "downgraded": false,
+        "talent_version": "engineer@v1"
+      },
+      "model": "mock",
+      "duration_ms": 0,
+      "token_usage": {
+        "input_tokens": 151,
+        "output_tokens": 878,
+        "total_tokens": 1029,
+        "source": "estimated"
+      },
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "budget.updated",
+      "message": "任务预算：估算 $0.0000 / $1.0000（0%）",
+      "agent": "engineer",
+      "status": null,
+      "stage": "coding",
+      "created_at": "2026-10-24T14:27:28.571495Z",
+      "data": {
+        "spent_usd": 0.0,
+        "budget_usd": 1.0,
+        "ratio": 0.0,
+        "calls": 2,
+        "downgraded": false,
+        "unknown_usage_calls": 0,
+        "cost_status": "unknown"
+      },
+      "model": "mock",
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "tool.called",
+      "message": "engineer 调用工具 write_game",
+      "agent": "engineer",
+      "status": null,
+      "stage": "coding",
+      "created_at": "2026-10-24T14:27:34.569602Z",
+      "data": {
+        "tool": "write_game"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "artifact.created",
+      "message": "生成 index.html",
+      "agent": null,
+      "status": null,
+      "stage": "coding",
+      "created_at": "2026-10-24T14:27:34.573594Z",
+      "data": {
+        "artifact": "index.html"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "tool.called",
+      "message": "reviewer 调用工具 run_tests",
+      "agent": "reviewer",
+      "status": null,
+      "stage": "coding",
+      "created_at": "2026-10-24T14:27:34.573616Z",
+      "data": {
+        "tool": "run_tests"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "artifact.created",
+      "message": "机械门禁通过：10 项检查，失败 0 项",
+      "agent": null,
+      "status": "reviewing",
+      "stage": "coding",
+      "created_at": "2026-10-24T14:27:40.371151Z",
+      "data": {
+        "artifact": "gate.json",
+        "passed": true,
+        "failed": [],
+        "unverified": [
+          "prd_acceptance"
+        ]
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "游戏初版已生成",
+      "agent": "engineer",
+      "status": "completed",
+      "stage": "coding",
+      "created_at": "2026-10-24T14:27:40.371848Z",
+      "data": {},
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "task.status_changed",
+      "message": "coding -> reviewing",
+      "agent": null,
+      "status": "reviewing",
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:40.372061Z",
+      "data": {
+        "from": "coding",
+        "to": "reviewing"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "正在检查游戏质量",
+      "agent": "reviewer",
+      "status": "reviewing",
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:40.372262Z",
+      "data": {},
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "tool.called",
+      "message": "reviewer 调用工具 read_game",
+      "agent": "reviewer",
+      "status": null,
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:40.372484Z",
+      "data": {
+        "tool": "read_game"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "reviewer 调用完成：mock · 1471 tokens · 0ms",
+      "agent": "reviewer",
+      "status": null,
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:40.376435Z",
+      "data": {
+        "cost_usd": 0.0,
+        "cost_status": "unknown",
+        "downgraded": false,
+        "talent_version": "reviewer@v1"
+      },
+      "model": "mock",
+      "duration_ms": 0,
+      "token_usage": {
+        "input_tokens": 1420,
+        "output_tokens": 51,
+        "total_tokens": 1471,
+        "source": "estimated"
+      },
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "budget.updated",
+      "message": "任务预算：估算 $0.0000 / $1.0000（0%）",
+      "agent": "reviewer",
+      "status": null,
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:40.376511Z",
+      "data": {
+        "spent_usd": 0.0,
+        "budget_usd": 1.0,
+        "ratio": 0.0,
+        "calls": 3,
+        "downgraded": false,
+        "unknown_usage_calls": 0,
+        "cost_status": "unknown"
+      },
+      "model": "mock",
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "tool.called",
+      "message": "reviewer 调用工具 write_review",
+      "agent": "reviewer",
+      "status": null,
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:46.373746Z",
+      "data": {
+        "tool": "write_review"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "artifact.created",
+      "message": "生成 review.json",
+      "agent": null,
+      "status": null,
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:46.375295Z",
+      "data": {
+        "artifact": "review.json"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "review.completed",
+      "message": "第 1 次审查：ITERATE（1 个问题）",
+      "agent": "reviewer",
+      "status": "reviewing",
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:46.375341Z",
+      "data": {
+        "verdict": "ITERATE",
+        "issues": [
+          {
+            "severity": "high",
+            "description": "缺少计分与游戏结束提示",
+            "suggestion": "在画面上方显示分数，并在结束时显示可点击的重新开始按钮"
+          }
+        ],
+        "suggestions": [
+          "补充计分 UI 与结束后重开入口"
+        ],
+        "forced_by_gate": false,
+        "gate_failed": [],
+        "gate_unverified": [
+          "prd_acceptance"
+        ],
+        "attempt": 1
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "failed",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "fix.requested",
+      "message": "第 1 次审查未通过：核心玩法存在，但缺少反馈与恢复入口，暂不交付。",
+      "agent": "reviewer",
+      "status": "reviewing",
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:46.375368Z",
+      "data": {
+        "gate_failed": [],
+        "gate_unverified": [
+          "prd_acceptance"
+        ]
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "发现 1 个问题",
+      "agent": "reviewer",
+      "status": "completed",
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:46.377040Z",
+      "data": {},
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "task.status_changed",
+      "message": "reviewing -> fixing",
+      "agent": null,
+      "status": "fixing",
+      "stage": "fixing",
+      "created_at": "2026-10-24T14:27:46.377601Z",
+      "data": {
+        "from": "reviewing",
+        "to": "fixing"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "正在根据审查报告修复",
+      "agent": "engineer",
+      "status": "fixing",
+      "stage": "fixing",
+      "created_at": "2026-10-24T14:27:46.378171Z",
+      "data": {},
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "fix.requested",
+      "message": "第 1 次修复，旧版本已存入 history/index.v1.html",
+      "agent": "engineer",
+      "status": "fixing",
+      "stage": "fixing",
+      "created_at": "2026-10-24T14:27:46.381109Z",
+      "data": {
+        "issues": [
+          {
+            "severity": "high",
+            "description": "缺少计分与游戏结束提示",
+            "suggestion": "在画面上方显示分数，并在结束时显示可点击的重新开始按钮"
+          }
+        ],
+        "gate_failed": [],
+        "snapshot": "history/index.v1.html"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "tool.called",
+      "message": "engineer 调用工具 read_review",
+      "agent": "engineer",
+      "status": null,
+      "stage": "fixing",
+      "created_at": "2026-10-24T14:27:46.382672Z",
+      "data": {
+        "tool": "read_review"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "engineer 调用完成：mock · 1052 tokens · 0ms",
+      "agent": "engineer",
+      "status": null,
+      "stage": "fixing",
+      "created_at": "2026-10-24T14:27:46.386301Z",
+      "data": {
+        "cost_usd": 0.0,
+        "cost_status": "unknown",
+        "downgraded": false,
+        "talent_version": "engineer@v1"
+      },
+      "model": "mock",
+      "duration_ms": 0,
+      "token_usage": {
+        "input_tokens": 176,
+        "output_tokens": 876,
+        "total_tokens": 1052,
+        "source": "estimated"
+      },
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "budget.updated",
+      "message": "任务预算：估算 $0.0000 / $1.0000（0%）",
+      "agent": "engineer",
+      "status": null,
+      "stage": "fixing",
+      "created_at": "2026-10-24T14:27:46.386326Z",
+      "data": {
+        "spent_usd": 0.0,
+        "budget_usd": 1.0,
+        "ratio": 0.0,
+        "calls": 4,
+        "downgraded": false,
+        "unknown_usage_calls": 0,
+        "cost_status": "unknown"
+      },
+      "model": "mock",
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "tool.called",
+      "message": "engineer 调用工具 write_game",
+      "agent": "engineer",
+      "status": null,
+      "stage": "fixing",
+      "created_at": "2026-10-24T14:27:52.385010Z",
+      "data": {
+        "tool": "write_game"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "artifact.created",
+      "message": "生成 index.html",
+      "agent": null,
+      "status": null,
+      "stage": "fixing",
+      "created_at": "2026-10-24T14:27:52.388091Z",
+      "data": {
+        "artifact": "index.html"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "tool.called",
+      "message": "reviewer 调用工具 run_tests",
+      "agent": "reviewer",
+      "status": null,
+      "stage": "fixing",
+      "created_at": "2026-10-24T14:27:52.388104Z",
+      "data": {
+        "tool": "run_tests"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "artifact.created",
+      "message": "机械门禁通过：10 项检查，失败 0 项",
+      "agent": null,
+      "status": "reviewing",
+      "stage": "fixing",
+      "created_at": "2026-10-24T14:27:56.282262Z",
+      "data": {
+        "artifact": "gate.json",
+        "passed": true,
+        "failed": [],
+        "unverified": [
+          "prd_acceptance"
+        ]
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "修复版本已生成",
+      "agent": "engineer",
+      "status": "completed",
+      "stage": "fixing",
+      "created_at": "2026-10-24T14:27:56.286647Z",
+      "data": {},
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "task.status_changed",
+      "message": "fixing -> reviewing",
+      "agent": null,
+      "status": "reviewing",
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:56.286939Z",
+      "data": {
+        "from": "fixing",
+        "to": "reviewing"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "正在复查修复版本",
+      "agent": "reviewer",
+      "status": "reviewing",
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:56.287174Z",
+      "data": {},
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "tool.called",
+      "message": "reviewer 调用工具 read_game",
+      "agent": "reviewer",
+      "status": null,
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:56.287431Z",
+      "data": {
+        "tool": "read_game"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "reviewer 调用完成：mock · 1442 tokens · 0ms",
+      "agent": "reviewer",
+      "status": null,
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:56.290810Z",
+      "data": {
+        "cost_usd": 0.0,
+        "cost_status": "unknown",
+        "downgraded": false,
+        "talent_version": "reviewer@v1"
+      },
+      "model": "mock",
+      "duration_ms": 0,
+      "token_usage": {
+        "input_tokens": 1420,
+        "output_tokens": 22,
+        "total_tokens": 1442,
+        "source": "estimated"
+      },
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "budget.updated",
+      "message": "任务预算：估算 $0.0000 / $1.0000（0%）",
+      "agent": "reviewer",
+      "status": null,
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:27:56.290845Z",
+      "data": {
+        "spent_usd": 0.0,
+        "budget_usd": 1.0,
+        "ratio": 0.0,
+        "calls": 5,
+        "downgraded": false,
+        "unknown_usage_calls": 0,
+        "cost_status": "unknown"
+      },
+      "model": "mock",
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "tool.called",
+      "message": "reviewer 调用工具 write_review",
+      "agent": "reviewer",
+      "status": null,
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:28:02.289057Z",
+      "data": {
+        "tool": "write_review"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "artifact.created",
+      "message": "生成 review.json",
+      "agent": null,
+      "status": null,
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:28:02.291635Z",
+      "data": {
+        "artifact": "review.json"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "review.completed",
+      "message": "第 2 次审查：PASS（0 个问题）",
+      "agent": "reviewer",
+      "status": "reviewing",
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:28:02.291676Z",
+      "data": {
+        "verdict": "PASS",
+        "issues": [],
+        "suggestions": [],
+        "forced_by_gate": false,
+        "gate_failed": [],
+        "gate_unverified": [
+          "prd_acceptance"
+        ],
+        "attempt": 2
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "agent.status_changed",
+      "message": "审查通过",
+      "agent": "reviewer",
+      "status": "completed",
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:28:02.292385Z",
+      "data": {},
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "artifact.created",
+      "message": "生成游戏版本 b1ee53da7c4c-v1",
+      "agent": null,
+      "status": null,
+      "stage": "reviewing",
+      "created_at": "2026-10-24T14:28:02.294869Z",
+      "data": {
+        "version_id": "b1ee53da7c4c-v1",
+        "version_number": 1,
+        "source_version_id": null,
+        "sop_mode": "fast"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "task.status_changed",
+      "message": "reviewing -> completed",
+      "agent": null,
+      "status": "completed",
+      "stage": "completed",
+      "created_at": "2026-10-24T14:28:02.295515Z",
+      "data": {
+        "from": "reviewing",
+        "to": "completed"
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": null,
+      "error": null
+    },
+    {
+      "task_id": "b1ee53da7c4c",
+      "type": "task.completed",
+      "message": "任务完成（FAST）：游戏已交付，无营销阶段",
+      "agent": null,
+      "status": "completed",
+      "stage": "completed",
+      "created_at": "2026-10-24T14:28:02.296153Z",
+      "data": {
+        "artifacts": [
+          "gate.json",
+          "index.html",
+          "prd.md",
+          "review.json"
+        ],
+        "sop_mode": "fast",
+        "version_id": "b1ee53da7c4c-v1",
+        "model_calls": 5
+      },
+      "model": null,
+      "duration_ms": null,
+      "token_usage": null,
+      "result": "ok",
+      "error": null
+    }
+  ],
+  "error": null,
+  "budget": {
+    "task_id": "b1ee53da7c4c",
+    "budget_usd": 1.0,
+    "spent_usd": 0.0,
+    "calls": 5,
+    "input_tokens": 3320,
+    "output_tokens": 1880,
+    "unknown_usage_calls": 0,
+    "unknown_cost_calls": 5,
+    "downgraded_calls": 0,
+    "blocked_calls": 0,
+    "models": {
+      "mock": 5
+    }
+  },
+  "cancel_requested_at": null,
+  "talent_versions": {
+    "coo": "coo@v1",
+    "engineer": "engineer@v1",
+    "reviewer": "reviewer@v1"
+  },
+  "sop_mode": "fast",
+  "sop_reason": "需求为短句局部修改，适用极速流程",
+  "source_version_id": null,
+  "source_sha256": null,
+  "run_id": "97023e40b8d7",
+  "final_version_id": "b1ee53da7c4c-v2",
+  "conflict_decision": null,
+  "creative_talent_version": null,
+  "delivery_talent_version": null,
+  "metrics": {
+    "elapsed_ms": 39750,
+    "model_calls": 5,
+    "parallel_wall_ms": 0
+  },
+  "created_at": "2026-10-24T14:27:22.543022Z",
+  "updated_at": "2026-10-24T14:28:02.297955Z"
+}
