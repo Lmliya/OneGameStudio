@@ -1,4 +1,4 @@
-"""工作流全流程与异常场景测试（全部使用 Mock / 脚本化模型，不联网）。"""
+"""工作流全流程与异常场景测试（Mock / 脚本化模型，真实浏览器门禁）。"""
 
 from pathlib import Path
 
@@ -20,23 +20,33 @@ PRD_JSON = """{
   "win_condition": "获得高分", "lose_condition": "撞墙"
 }"""
 
-GAME_HTML = "<html><body><canvas></canvas><script>console.log(1)</script></body></html>"
+GAME_HTML = "<html><body><canvas width='320' height='240'></canvas><script>var a=1</script></body></html>"
 GAME_JSON = (
-    '{"title":"贪吃蛇","filename":"snake.html","html":'
-    f'"{GAME_HTML}","notes":"初版"}}'
+    '{"title":"贪吃蛇","filename":"snake.html","html":"'
+    + GAME_HTML
+    + '","notes":"初版"}'
 )
 GAME_JSON_FIXED = (
-    '{"title":"贪吃蛇","filename":"snake.html","html":'
-    f'"{GAME_HTML}","notes":"已修复"}}'
+    '{"title":"贪吃蛇","filename":"snake.html","html":"'
+    + GAME_HTML
+    + '","notes":"已修复"}'
+)
+# 没有游戏区域，机械门禁必然失败
+BROKEN_GAME_JSON = (
+    '{"title":"贪吃蛇","filename":"snake.html",'
+    '"html":"<html><body><script>var a=1</script></body></html>",'
+    '"notes":"缺少画布"}'
 )
 
 REVIEW_FAIL_JSON = """{
-  "score": 55, "passed": false,
+  "verdict": "ITERATE",
   "issues": [{"severity": "high", "description": "缺少计分",
-              "suggestion": "增加分数显示"}]
+              "suggestion": "增加分数显示"}],
+  "suggestions": ["补充计分 UI"],
+  "summary": "玩法不完整"
 }"""
 
-REVIEW_PASS_JSON = '{"score": 90, "passed": true, "issues": []}'
+REVIEW_PASS_JSON = '{"verdict":"PASS","issues":[],"suggestions":[],"summary":"可交付"}'
 
 MARKETING_JSON = """{
   "tagline": "一条蛇的冒险", "description": "经典玩法，轻松上手",
@@ -101,6 +111,7 @@ async def test_full_flow_success_first_try(tmp_path: Path) -> None:
     assert set(result.artifacts) == {
         "prd.md",
         "index.html",
+        "gate.json",
         "review.json",
         "marketing_kit.md",
     }
@@ -129,6 +140,8 @@ async def test_reviewer_rejects_then_passes(tmp_path: Path) -> None:
     states = [e.stage for e in result.events if e.type.value == "state_changed"]
     assert "fixing" in states
     assert states.count("reviewing") == 2
+    # 修复前的旧版本必须保留
+    assert (tmp_path / record.task_id / "history" / "index.v1.html").exists()
 
 
 async def test_fix_limit_reached_goes_to_needs_attention(tmp_path: Path) -> None:
@@ -146,11 +159,43 @@ async def test_fix_limit_reached_goes_to_needs_attention(tmp_path: Path) -> None
     assert result.status is TaskStatus.NEEDS_ATTENTION
     assert result.fix_attempts == 2
     assert result.error
-    # 已产出的文件必须保留
     assert (tmp_path / record.task_id / "prd.md").exists()
     assert (tmp_path / record.task_id / "index.html").exists()
     assert (tmp_path / record.task_id / "review.json").exists()
     assert not (tmp_path / record.task_id / "marketing_kit.md").exists()
+
+
+async def test_mechanical_gate_failure_forces_iterate(tmp_path: Path) -> None:
+    """AI 一直说 PASS，但游戏没有画布，门禁必须阻止交付。"""
+    provider = ScriptedProvider(
+        {
+            "prd": [PRD_JSON],
+            "game": [BROKEN_GAME_JSON, BROKEN_GAME_JSON, BROKEN_GAME_JSON],
+            "review": [REVIEW_PASS_JSON, REVIEW_PASS_JSON, REVIEW_PASS_JSON],
+        }
+    )
+    engine, _, record = make_engine(tmp_path, provider, max_fix_rounds=2)
+
+    result = await engine.start(record.task_id)
+
+    assert result.status is TaskStatus.NEEDS_ATTENTION
+    review = (tmp_path / record.task_id / "review.json").read_text(encoding="utf-8")
+    assert '"verdict": "ITERATE"' in review
+    assert '"forced_by_gate": true' in review
+    gate = (tmp_path / record.task_id / "gate.json").read_text(encoding="utf-8")
+    assert '"passed": false' in gate
+
+
+async def test_reviewer_parse_failure_terminates_task(tmp_path: Path) -> None:
+    provider = ScriptedProvider(
+        {"prd": [PRD_JSON], "game": [GAME_JSON], "review": ["这不是 JSON"]}
+    )
+    engine, _, record = make_engine(tmp_path, provider)
+
+    result = await engine.start(record.task_id)
+
+    assert result.status is TaskStatus.FAILED
+    assert "无法解析" in result.error
 
 
 async def test_coo_bad_output_fails(tmp_path: Path) -> None:
@@ -172,7 +217,6 @@ async def test_engineer_produces_no_file_fails(tmp_path: Path) -> None:
     result = await engine.start(record.task_id)
 
     assert result.status is TaskStatus.FAILED
-    # PRD 已产出，index.html 未产出
     assert (tmp_path / record.task_id / "prd.md").exists()
     assert not (tmp_path / record.task_id / "index.html").exists()
 

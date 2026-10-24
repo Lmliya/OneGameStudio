@@ -1,139 +1,116 @@
 # 开发进度
 
+## 阶段 3：双层审查与自动修复（已完成）
+
+**日期**：2026-10-23
+
+### 已实现
+
+**第一层：机械门禁**（`backend/gate/mechanical.py`）
+
+| 检查项                   | 手段                     | 失败/未验证条件                         |
+| ------------------------ | ------------------------ | --------------------------------------- |
+| `html_structure`         | 纯 Python                | 空文件或缺少 `html/body/script`         |
+| `page_load`              | Playwright `set_content` | 页面无法加载                            |
+| `js_errors`              | `pageerror` 事件         | 出现未处理异常                          |
+| `network_isolation`      | 路由拦截                 | 记录被拦截的外部请求（不计失败）        |
+| `game_area`              | DOM 查询                 | 无可见 canvas / 游戏容器                |
+| `restart_control`        | DOM 查询                 | 找不到重开控件时标记 unverified         |
+| `arrow_keys`             | 探针 + 真实按键          | 方向未变化                              |
+| `score_updates`          | 探针摆放食物             | 分数未增长                              |
+| `restart_after_gameover` | 撞墙 → 点击重开          | 重开后 `over` 仍为真或分数未归零        |
+| `prd_acceptance`         | PRD 条目映射             | 映射不到可自动验证的项时标记 unverified |
+| `gameplay`               | 无探针时                 | 明确标记 unverified，不伪造通过         |
+
+**第二层：AI Reviewer**
+
+- 输入：PRD + 机械门禁报告 + 游戏代码。
+- 输出契约改为 `verdict(PASS|ITERATE) / issues / suggestions / summary`。
+- 裁决规则：
+  - 门禁失败且 AI 说 PASS → 强制改为 ITERATE，`forced_by_gate=true`。
+  - 门禁失败时把失败项并入 `issues`，拒绝原因完整落盘。
+  - Reviewer 输出无法解析 → 任务直接 `failed`，不进入无意义的修复循环。
+
+**自动修复**
+
+- ITERATE 时把 issues + suggestions 交给 Engineer。
+- 修复前把当前 `index.html` 快照到 `history/index.v{n}.html`。
+- 每轮门禁报告留档 `history/gate.v{n}.json`。
+- 修复后重新执行门禁 + 审查，最多 2 次，用尽进 `needs_attention`。
+
+### 安全措施
+
+| 要求                 | 实现                                                  |
+| -------------------- | ----------------------------------------------------- |
+| 不访问服务端文件系统 | `set_content` 注入，不传任何路径                      |
+| 不接触 API Key       | 全新 context，无 storage / 无环境变量注入             |
+| 独立隔离浏览器上下文 | 每次新建 context，`service_workers=block`             |
+| 禁止不必要的外部网络 | 除 `data:/about:/blob:` 外全部 `route.abort()` 并记录 |
+| 限制超时与资源       | 单次 8s、总 30s，`finally` 强制关闭浏览器             |
+| 不执行模型 shell     | 全项目无 shell 入口，模型输出只作 JSON 解析           |
+
+### 测试
+
+```
+uv run pytest -q   → 50 passed in 40.06s
+```
+
+新增 9 个门禁用例（真实 Chromium）+ 2 个工作流用例：
+
+- 贪吃蛇全部探针通过
+- 人为破坏重开 → `restart_after_gameover` 失败
+- JS 抛错被捕获
+- 外部脚本被拦截
+- 无画布判失败
+- 无探针时玩法标记 unverified
+- AI 强行 PASS 但门禁失败 → `needs_attention`，`review.json` 为 ITERATE
+- Reviewer 输出不可解析 → 任务 failed
+
+### 实际运行验证
+
+**A. 注入重开缺陷 → 被拦截 → 修复 → 交付**
+
+```
+status: completed | fix_attempts: 1
+首轮门禁 passed: False | 失败项: ['restart_after_gameover', 'prd_acceptance']
+  - 结束后可重新开始: 点击重开后 over=True, score=1
+  - PRD 验收项: 未满足：结束后可重新开始
+产物: prd.md index.html gate.json review.json marketing_kit.md
+      history/index.v1.html history/gate.v1.json history/gate.v2.json
+```
+
+**B. AI 持续说 PASS，但门禁持续失败**
+
+```
+status: needs_attention | fix_attempts: 2
+首轮门禁 passed: False | 失败项: ['game_area']
+```
+
+此时 `review.json`：
+
+```json
+{
+  "verdict": "ITERATE",
+  "issues": [
+    {
+      "severity": "high",
+      "description": "机械门禁未通过：可识别的游戏区域（未找到可见的 canvas 或游戏容器）",
+      "suggestion": "修复后必须重新通过机械门禁与 AI 审查"
+    }
+  ],
+  "suggestions": [],
+  "summary": "机械门禁未通过，禁止判定 PASS。可交付",
+  "forced_by_gate": true
+}
+```
+
+### 未解决问题
+
+1. **Playwright 自带 Chromium 下载失败**：本机网络无法访问下载源。已实现回退到系统 Chrome（`channel="chrome"`），并支持 `OGS_BROWSER_PATH`。部署到新机器时需确认浏览器可用。
+2. **玩法探针是可选协议**：只有暴露 `window.__ogsProbe` 的游戏能做确定性玩法断言；真实模型生成的游戏多数没有，此时只能标记 unverified。后续可考虑用图像差异等弱信号改进。
+3. **门禁总耗时约 2-3 秒/轮**：当前每次检查都新建浏览器，尚未复用。
+4. **PRD 映射是关键词匹配**：`方向键`、`计分`、`结束` 之外的验收项都会落到 unverified。
+
+---
+
 ## 阶段 2：四 Agent 工作流（已完成）
-
-**日期**：2026-10-23
-
-### 已实现
-
-- 确定性状态机 `backend/workflow/state_machine.py`
-  - 状态：`pending / planning / coding / reviewing / fixing / marketing / completed / failed / needs_attention`
-  - 非法迁移抛 `InvalidTransitionError`，终态不可再迁移
-- 工作流引擎 `backend/workflow/engine.py`
-  - COO → Engineer → Reviewer →（不通过）Engineer 修复 → 再审查 → Marketer
-  - 默认最多修复 2 次，用尽后进入 `needs_attention`
-  - 每次状态变更写入 `state_changed` 事件
-  - 确定性质量门禁 `game_quality_gate`：空文件、缺 `<html>`、缺 `<script>` 直接判失败
-- 任务持久化 `backend/store.py`
-  - `output/{task_id}/` 下产出 `prd.md`、`index.html`、`review.json`、`marketing_kit.md`、`task.json`
-  - 只新增不删除，任一阶段失败已产出内容保留
-- API（`backend/main.py`）
-  - `POST /api/tasks` → 202，后台执行；相同需求的运行中任务返回 409
-  - `GET /api/tasks/{task_id}`
-  - `GET /api/tasks/{task_id}/artifacts`
-- Mock 供应商支持审查轮次：默认第 1 次不通过、第 2 次通过，用于演示完整修复闭环
-- 测试 39 个全部通过（新增工作流 7 个、状态机 6 个、API 8 个）
-
-### 角色边界
-
-| 规则                               | 实现                                                      |
-| ---------------------------------- | --------------------------------------------------------- |
-| Reviewer 不得改代码                | 引擎只把审查结果写入 `review.json`，从不回写 `index.html` |
-| Marketer 不得改代码                | 只写 `marketing_kit.md`                                   |
-| 只有通过质量门禁才能进入 Marketing | `review.passed` 为真且 `game_quality_gate` 无问题         |
-| 同一任务不得并发执行               | `WorkflowEngine._running` + `TaskAlreadyRunningError`     |
-| 任一阶段失败保留产物               | `TaskStore.write_artifact` 只写不删                       |
-
-### 实际验证
-
-```
-uv run pytest -q  → 39 passed in 0.45s
-```
-
-Mock 模式端到端实际运行：
-
-```
-task_id: 4c7cee59e708
-status : completed
-fix    : 1
-
-状态轨迹:
-  pending    -> planning
-  planning   -> coding
-  coding     -> reviewing
-  reviewing  -> fixing
-  fixing     -> reviewing
-  reviewing  -> marketing
-  marketing  -> completed
-
-产物文件:
-  index.html        1319 bytes
-  marketing_kit.md   264 bytes
-  prd.md             291 bytes
-  review.json         51 bytes
-  task.json         3000 bytes
-```
-
-### 未实现（后续阶段）
-
-- 像素办公室前端与 WebSocket 实时推送（阶段 5）
-- 独立的 Quality Gate 模块（当前门禁内嵌在引擎中）
-- 经验知识库
-- `needs_attention` 任务的人工重试入口
-
-### 已知限制
-
-- Mock 输出与需求文本无关，四个员工的产物固定
-- 后台任务使用进程内 `asyncio.Task`，服务重启后运行中任务不会自动续跑
-- 产物查询接口一次性返回全部文件内容，任务较大时需要分页或按名读取
-- `store.find_active_by_requirement` 每次提交都会扫描全部任务目录，任务量很大时需要索引
-
----
-
-## 阶段 1：Talent / Vessel（已完成）
-
-**日期**：2026-10-23
-
-### 已实现
-
-- 四个 Talent 配置文件：`talents/{coo,engineer,reviewer,marketer}.yaml`
-  - 字段：`name`、`role`、`system_prompt`、`model`、`allowed_tools`、`output_schema`
-  - `model` 留空，统一由 `LLM_MODEL` 提供，支持按 Talent 单独覆盖
-- 输出契约 `backend/schemas.py`：`GamePRD`、`GameArtifact`、`ReviewReport`、`MarketingKit`
-- Talent 加载器 `backend/talents.py`
-  - 校验必填字段
-  - `allowed_tools` 必须属于系统白名单（当前仅 `read_contract`、`write_artifact`）
-  - `output_schema` 必须已注册
-- 通用 `Vessel`（`backend/core/vessel.py`）
-- 供应商：`MockProvider`、`OpenAICompatibleProvider`
-- 配置改为 `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`，代码中无硬编码模型名
-- 测试 25 个全部通过
-- 依赖：新增 `pyyaml`（Talent 配置解析）与 dev 依赖 `httpx2`（消除 Starlette TestClient 告警）
-
-### 安全约束落地
-
-| 要求                          | 实现位置                                        |
-| ----------------------------- | ----------------------------------------------- |
-| Talent 不得使用未授权工具     | `talents.py` 加载时校验 `ALLOWED_TOOLS`         |
-| 不执行模型输出中的 shell 命令 | 全项目无 shell 执行入口；模型输出只当 JSON 解析 |
-| 模型输出必须经过结构验证      | `Vessel._validate` + `OUTPUT_SCHEMAS`           |
-| 解析失败返回明确错误          | `OutputParseError` / `OutputValidationError`    |
-
----
-
-## 阶段 0：初始化项目（已完成）
-
-**日期**：2026-10-23
-
-### 环境检查
-
-| 项      | 版本         | 结论                             |
-| ------- | ------------ | -------------------------------- |
-| macOS   | 26.3 (arm64) | 正常                             |
-| Python  | 3.13.9       | 满足 3.12+                       |
-| uv      | 0.13.4       | 正常                             |
-| Node.js | v25.8.2      | 仅用于本地静态预览，项目无构建链 |
-| Git     | 2.50.1       | 已初始化仓库，工作区干净         |
-
-### 已实现
-
-- uv 项目初始化，Python 3.12+
-- 目录：`backend/`、`frontend/`、`talents/`、`tests/`、`docs/`、`output/`
-- FastAPI 应用，`GET /api/health`
-- 前端页面：项目名称、CEO 需求输入框、状态徽章
-- 最小 Mock 供应商 + `BaseProvider` 抽象
-- 配置模板、`.gitignore`、`README.md`、`docs/architecture.md`
-
-### 结构变更说明
-
-曾使用 `src/onegamestudio/` 布局，阶段 0 按规范迁移为 `backend/`，旧目录已删除，功能等价保留。

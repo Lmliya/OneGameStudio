@@ -1,23 +1,46 @@
 """确定性工作流引擎。
 
 流程：
-  pending -> planning(COO) -> coding(Engineer) -> reviewing(Reviewer)
-          -> [fixing(Engineer) -> reviewing] * max_fix_rounds
+  pending -> planning(COO) -> coding(Engineer) -> [机械门禁] -> reviewing(Reviewer)
+          -> [fixing(Engineer) -> 机械门禁 -> reviewing] * max_fix_rounds
           -> marketing(Marketer) -> completed
+
+审查是双层结构：
+  第一层 Mechanical Gate（Playwright，确定性断言）
+  第二层 AI Reviewer（读 PRD + 代码 + 门禁报告，输出 PASS / ITERATE）
+
+裁决规则：
+  - 机械门禁失败时，即使 AI 给出 PASS 也强制改为 ITERATE（forced_by_gate）。
+  - 门禁通过后，以 AI 的 verdict 为准。
+  - Reviewer 输出无法解析时，直接终止任务，不做无意义的修复循环。
 
 约束：
 - 状态迁移只经由 state_machine 校验后执行。
-- Reviewer 不写代码，Marketer 不改游戏，二者产物分别是 review.json 与 marketing_kit.md。
-- 任一阶段异常都保留已写入的产物，并落到 failed。
-- 修复次数用尽仍不通过则进入 needs_attention。
+- Reviewer 不写代码，Marketer 不改游戏。
+- 任一阶段异常都保留已写入的产物。
+- 修复前把当前 index.html 快照进 history/，保证旧版本不丢。
 """
 
 from __future__ import annotations
 
-from backend.core.vessel import Vessel, VesselError
+from backend.core.vessel import (
+    OutputParseError,
+    OutputValidationError,
+    Vessel,
+    VesselError,
+)
+from backend.gate import GateUnavailableError, run_mechanical_gate
 from backend.models.contract import TaskRecord, TaskStatus
 from backend.models.events import EventType, TraceEvent
-from backend.schemas import GameArtifact, GamePRD, MarketingKit, ReviewReport
+from backend.schemas import (
+    GameArtifact,
+    GamePRD,
+    GateCheck,
+    Issue,
+    MarketingKit,
+    MechanicalReport,
+    ReviewReport,
+)
 from backend.store import TaskStore
 from backend.workflow.state_machine import assert_transition
 
@@ -32,23 +55,6 @@ class TaskAlreadyRunningError(WorkflowError):
 
 class StageExecutionError(WorkflowError):
     """阶段执行的确定性检查失败（如产物不合法）。"""
-
-
-def game_quality_gate(html: str) -> list[str]:
-    """确定性质量门禁：不依赖模型，纯代码检查。
-
-    只有通过这里，Reviewer 的"通过"才被认可，才能进入 Marketing。
-    """
-    problems: list[str] = []
-    if not html.strip():
-        problems.append("index.html 为空")
-        return problems
-    lowered = html.lower()
-    if "<html" not in lowered:
-        problems.append("缺少 <html> 根标签")
-    if "<script" not in lowered:
-        problems.append("缺少 <script>，游戏无法交互")
-    return problems
 
 
 def render_prd(prd: GamePRD) -> str:
@@ -80,6 +86,14 @@ def render_marketing(kit: MarketingKit) -> str:
     lines += [f"- {channel}" for channel in kit.channels]
     lines.append("")
     return "\n".join(lines)
+
+
+def _gate_issue(check: GateCheck) -> Issue:
+    return Issue(
+        severity="high",
+        description=f"机械门禁未通过：{check.title}（{check.detail}）",
+        suggestion="修复后必须重新通过机械门禁与 AI 审查",
+    )
 
 
 class WorkflowEngine:
@@ -116,18 +130,18 @@ class WorkflowEngine:
             self._store.write_artifact(record, "prd.md", render_prd(prd))
             self._store.save(record)
 
-            # ---------- Engineer ----------
+            # ---------- Engineer + 机械门禁 ----------
             self._transition(record, TaskStatus.CODING)
             game: GameArtifact = await self._call(
                 record, "engineer", self._engineer_context(record.requirement, prd, None)
             )
-            self._write_game(record, game)
+            report = await self._apply_gate(record, game, prd)
 
-            # ---------- Review / Fix 循环 ----------
+            # ---------- 双层审查 + 修复循环 ----------
             self._transition(record, TaskStatus.REVIEWING)
-            review = await self._review(record, prd, game)
+            review = await self._review(record, prd, game, report)
 
-            while not review.passed:
+            while review.verdict != "PASS":
                 if record.fix_attempts >= record.max_fix_rounds:
                     record.error = (
                         f"审查连续未通过，已达到修复上限 {record.max_fix_rounds} 次"
@@ -137,14 +151,19 @@ class WorkflowEngine:
                     return record
 
                 self._transition(record, TaskStatus.FIXING)
+                snapshot = f"history/index.v{record.fix_attempts + 1}.html"
+                self._store.snapshot(record, "index.html", snapshot)
                 record.fix_attempts += 1
                 record.events.append(
                     TraceEvent(
                         task_id=record.task_id,
                         type=EventType.FIX_REQUESTED,
                         stage=TaskStatus.FIXING.value,
-                        message=f"第 {record.fix_attempts} 次修复",
-                        data={"issues": [i.model_dump() for i in review.issues]},
+                        message=f"第 {record.fix_attempts} 次修复，旧版本已存入 {snapshot}",
+                        data={
+                            "issues": [i.model_dump() for i in review.issues],
+                            "gate_failed": report.failed_ids,
+                        },
                     )
                 )
                 self._store.save(record)
@@ -154,10 +173,10 @@ class WorkflowEngine:
                     "engineer",
                     self._engineer_context(record.requirement, prd, review),
                 )
-                self._write_game(record, game)
+                report = await self._apply_gate(record, game, prd)
 
                 self._transition(record, TaskStatus.REVIEWING)
-                review = await self._review(record, prd, game)
+                review = await self._review(record, prd, game, report)
 
             # ---------- Marketer ----------
             self._transition(record, TaskStatus.MARKETING)
@@ -172,7 +191,7 @@ class WorkflowEngine:
             self._store.save(record)
             return record
 
-        except (VesselError, StageExecutionError) as exc:
+        except (VesselError, StageExecutionError, GateUnavailableError) as exc:
             return self._fail(record, str(exc))
 
     # ---------- 内部方法 ----------
@@ -184,27 +203,73 @@ class WorkflowEngine:
         )
         return result.output
 
-    def _write_game(self, record: TaskRecord, game: GameArtifact) -> None:
-        problems = game_quality_gate(game.html)
-        if problems:
-            raise StageExecutionError("游戏质量门禁未通过：" + "；".join(problems))
+    async def _apply_gate(
+        self, record: TaskRecord, game: GameArtifact, prd: GamePRD
+    ) -> MechanicalReport:
+        """落盘游戏代码并执行机械门禁，报告写入 gate.json。"""
         self._store.write_artifact(record, "index.html", game.html)
+        report = await run_mechanical_gate(game.html, prd)
+        self._store.write_artifact(
+            record, "gate.json", report.model_dump_json(indent=2)
+        )
+        # 每轮门禁报告都留档，拒绝原因可追溯
+        self._store.snapshot(
+            record, "gate.json", f"history/gate.v{record.fix_attempts + 1}.json"
+        )
         self._store.save(record)
+        return report
 
     async def _review(
-        self, record: TaskRecord, prd: GamePRD, game: GameArtifact
+        self,
+        record: TaskRecord,
+        prd: GamePRD,
+        game: GameArtifact,
+        report: MechanicalReport,
     ) -> ReviewReport:
         attempt = record.fix_attempts + 1
         context = (
             f"PRD：\n{prd.model_dump_json(indent=2)}\n\n"
+            f"机械门禁报告：\n{report.model_dump_json(indent=2)}\n\n"
             f"游戏代码 index.html：\n{game.html}\n\n"
             f"审查轮次: {attempt}"
         )
-        review: ReviewReport = await self._call(record, "reviewer", context)
+        try:
+            review: ReviewReport = await self._call(record, "reviewer", context)
+        except (OutputParseError, OutputValidationError) as exc:
+            # 明确的失败策略：无法解析审查结果时不进入修复循环
+            raise StageExecutionError(
+                f"Reviewer 输出无法解析，按策略终止任务：{exc}"
+            ) from exc
+
+        gate_issues = [_gate_issue(c) for c in report.checks if c.status == "fail"]
+        updates: dict = {}
+        if gate_issues:
+            updates["issues"] = review.issues + gate_issues
+        if not report.passed and review.verdict == "PASS":
+            updates["verdict"] = "ITERATE"
+            updates["forced_by_gate"] = True
+            updates["summary"] = "机械门禁未通过，禁止判定 PASS。" + review.summary
+        if updates:
+            review = review.model_copy(update=updates)
+
         # Reviewer 只写审查结果，绝不回写 index.html
         self._store.write_artifact(
             record, "review.json", review.model_dump_json(indent=2)
         )
+        if review.verdict != "PASS":
+            record.events.append(
+                TraceEvent(
+                    task_id=record.task_id,
+                    type=EventType.STAGE_FAILED,
+                    stage=TaskStatus.REVIEWING.value,
+                    message=f"第 {attempt} 次审查未通过：{review.summary}",
+                    data={
+                        "gate_failed": report.failed_ids,
+                        "gate_unverified": report.unverified_ids,
+                        "forced_by_gate": review.forced_by_gate,
+                    },
+                )
+            )
         self._store.save(record)
         return review
 
@@ -212,16 +277,18 @@ class WorkflowEngine:
     def _engineer_context(
         requirement: str, prd: GamePRD, review: ReviewReport | None
     ) -> str:
-        context = (
-            f"需求：{requirement}\n\n"
-            f"PRD：\n{prd.model_dump_json(indent=2)}"
-        )
+        context = f"需求：{requirement}\n\nPRD：\n{prd.model_dump_json(indent=2)}"
         if review is not None:
             issues = "\n".join(
                 f"- [{issue.severity}] {issue.description} -> {issue.suggestion}"
                 for issue in review.issues
             )
-            context += f"\n\n审查意见：\n{issues}\n\n请修复后输出完整游戏。"
+            suggestions = "\n".join(f"- {s}" for s in review.suggestions)
+            context += (
+                f"\n\n审查意见：\n{issues}"
+                f"\n\n修改建议：\n{suggestions or '（无）'}"
+                "\n\n请修复后输出完整游戏。"
+            )
         return context
 
     @staticmethod
@@ -231,7 +298,7 @@ class WorkflowEngine:
         return (
             f"PRD：\n{prd.model_dump_json(indent=2)}\n\n"
             f"游戏文件：{game.filename}\n"
-            f"审查得分：{review.score}\n"
+            f"审查结论：{review.verdict} - {review.summary}\n"
         )
 
     def _transition(self, record: TaskRecord, target: TaskStatus) -> None:

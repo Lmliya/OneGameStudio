@@ -12,24 +12,95 @@ import re
 
 from backend.providers.base import BaseProvider, ProviderResponse
 
-_SNAKE_HTML = """<!DOCTYPE html>
+# 贪吃蛇：可被机械门禁用探针确定性驱动（方向 / 计分 / 重开）
+SNAKE_HTML = """<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8"><title>Snake</title>
-<style>body{margin:0;background:#10131a;display:flex;justify-content:center;align-items:center;height:100vh}
-canvas{background:#1a1f2b;border:2px solid #6ee7b7}</style></head>
-<body><canvas id="c" width="400" height="400"></canvas>
+<style>
+  body{margin:0;background:#10131a;color:#e6e8ee;font-family:monospace;
+       display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh}
+  #hud{margin-bottom:8px;font-size:14px}
+  canvas{background:#161b26;border:2px solid #6ee7b7}
+  #restart{margin-top:10px;padding:6px 14px;background:#6ee7b7;border:0;border-radius:4px;cursor:pointer}
+</style></head>
+<body>
+<div id="hud">Score: <span id="score">0</span></div>
+<canvas id="game" width="400" height="400"></canvas>
+<button id="restart" hidden>重新开始</button>
 <script>
-const c=document.getElementById('c'),x=c.getContext('2d'),G=20;
-let s=[{x:10,y:10}],d={x:1,y:0},f={x:15,y:10},score=0,dead=false;
-document.addEventListener('keydown',e=>{const k=e.key;
-if(k==='ArrowUp'&&d.y===0)d={x:0,y:-1};if(k==='ArrowDown'&&d.y===0)d={x:0,y:1};
-if(k==='ArrowLeft'&&d.x===0)d={x:-1,y:0};if(k==='ArrowRight'&&d.x===0)d={x:1,y:0};});
-function step(){if(dead)return;const h={x:s[0].x+d.x,y:s[0].y+d.y};
-if(h.x<0||h.y<0||h.x>=G||h.y>=G||s.some(p=>p.x===h.x&&p.y===h.y)){dead=true;}
-else{s.unshift(h);if(h.x===f.x&&h.y===f.y){score++;f={x:Math.floor(Math.random()*G),y:Math.floor(Math.random()*G)};}else s.pop();}}
-function draw(){x.clearRect(0,0,400,400);x.fillStyle='#6ee7b7';s.forEach(p=>x.fillRect(p.x*G,p.y*G,G-1,G-1));
-x.fillStyle='#fbbf24';x.fillRect(f.x*G,f.y*G,G-1,G-1);x.fillStyle='#8b93a7';
-x.font='14px monospace';x.fillText('Score: '+score,8,18);if(dead)x.fillText('Game Over - refresh',130,200);}
-setInterval(()=>{step();draw();},120);draw();
+(function () {
+  var CELL = 20, COLS = 20, TICK = 120;
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+  var scoreEl = document.getElementById('score');
+  var restartBtn = document.getElementById('restart');
+  var snake, dir, food, score, over, timer;
+
+  function randCell() { return Math.floor(Math.random() * COLS); }
+  function placeFood() {
+    var p;
+    do { p = { x: randCell(), y: randCell() }; }
+    while (snake.some(function (s) { return s.x === p.x && s.y === p.y; }));
+    food = p;
+  }
+  function draw() {
+    ctx.fillStyle = '#161b26'; ctx.fillRect(0, 0, 400, 400);
+    ctx.fillStyle = '#6ee7b7';
+    snake.forEach(function (s) { ctx.fillRect(s.x * CELL, s.y * CELL, CELL - 2, CELL - 2); });
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(food.x * CELL, food.y * CELL, CELL - 2, CELL - 2);
+    if (over) {
+      ctx.fillStyle = 'rgba(0,0,0,.62)'; ctx.fillRect(0, 0, 400, 400);
+      ctx.fillStyle = '#fff'; ctx.font = '20px monospace';
+      ctx.fillText('Game Over', 140, 200);
+    }
+  }
+  function tick() {
+    if (over) return;
+    var head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+    var hitWall = head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= COLS;
+    var hitSelf = snake.some(function (s) { return s.x === head.x && s.y === head.y; });
+    if (hitWall || hitSelf) {
+      over = true; clearInterval(timer); restartBtn.hidden = false; draw(); return;
+    }
+    snake.unshift(head);
+    if (head.x === food.x && head.y === food.y) {
+      score += 1; scoreEl.textContent = String(score); placeFood();
+    } else {
+      snake.pop();
+    }
+    draw();
+  }
+  function reset() {
+    snake = [{ x: 10, y: 10 }];
+    dir = { x: 1, y: 0 };
+    score = 0; over = false;
+    placeFood();
+    scoreEl.textContent = '0';
+    restartBtn.hidden = true;
+    if (timer) clearInterval(timer);
+    timer = setInterval(tick, TICK);
+    draw();
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowUp' && dir.y === 0) dir = { x: 0, y: -1 };
+    else if (e.key === 'ArrowDown' && dir.y === 0) dir = { x: 0, y: 1 };
+    else if (e.key === 'ArrowLeft' && dir.x === 0) dir = { x: -1, y: 0 };
+    else if (e.key === 'ArrowRight' && dir.x === 0) dir = { x: 1, y: 0 };
+  });
+  restartBtn.addEventListener('click', reset);
+
+  // 测试探针：只读状态 + 摆放食物，不改变游戏规则
+  window.__ogsProbe = {
+    version: 1,
+    state: function () {
+      return { dir: { x: dir.x, y: dir.y }, score: score, over: over,
+               head: { x: snake[0].x, y: snake[0].y }, length: snake.length, tickMs: TICK };
+    },
+    placeFood: function (x, y) { food = { x: x, y: y }; }
+  };
+
+  reset();
+})();
 </script></body></html>"""
 
 _PRIMARY_OUTPUTS: dict[str, dict] = {
@@ -37,7 +108,7 @@ _PRIMARY_OUTPUTS: dict[str, dict] = {
         "title": "贪吃蛇",
         "genre": "arcade",
         "core_loop": ["移动", "吃食物", "变长", "避免撞墙或撞到自己"],
-        "features": ["计分", "随机食物", "游戏结束判定"],
+        "features": ["计分", "随机食物", "游戏结束判定", "结束后可重新开始"],
         "controls": ["方向键移动"],
         "win_condition": "尽可能获得更高分数",
         "lose_condition": "撞墙或撞到自身",
@@ -45,7 +116,7 @@ _PRIMARY_OUTPUTS: dict[str, dict] = {
     "game": {
         "title": "贪吃蛇",
         "filename": "snake.html",
-        "html": _SNAKE_HTML,
+        "html": SNAKE_HTML,
         "notes": "单文件 Canvas 2D 实现，无外部依赖",
     },
     "marketing": {
@@ -57,18 +128,24 @@ _PRIMARY_OUTPUTS: dict[str, dict] = {
 }
 
 _REVIEW_FAIL = {
-    "score": 55,
-    "passed": False,
+    "verdict": "ITERATE",
     "issues": [
         {
             "severity": "high",
             "description": "缺少计分与游戏结束提示",
-            "suggestion": "在画面左上角显示分数，并在结束时给出重开提示",
+            "suggestion": "在画面上方显示分数，并在结束时显示可点击的重新开始按钮",
         }
     ],
+    "suggestions": ["补充计分 UI 与结束后重开入口"],
+    "summary": "核心玩法存在，但缺少反馈与恢复入口，暂不交付。",
 }
 
-_REVIEW_PASS = {"score": 88, "passed": True, "issues": []}
+_REVIEW_PASS = {
+    "verdict": "PASS",
+    "issues": [],
+    "suggestions": [],
+    "summary": "玩法与 PRD 一致，机械门禁通过，可交付。",
+}
 
 
 def _review_attempt(user: str) -> int:
@@ -80,7 +157,7 @@ class MockProvider(BaseProvider):
     default_model = "mock"
 
     def __init__(self, review_passes_from: int = 2) -> None:
-        # 第 N 次及以后的审查返回通过；默认第 2 次通过
+        # 第 N 次及以后的审查返回 PASS；默认第 2 次通过
         self._review_passes_from = review_passes_from
 
     async def complete(
@@ -105,13 +182,15 @@ class MockProvider(BaseProvider):
         if schema == "review":
             attempt = _review_attempt(user)
             return (
-                dict(_REVIEW_PASS)
+                json.loads(json.dumps(_REVIEW_PASS))
                 if attempt >= self._review_passes_from
-                else dict(_REVIEW_FAIL)
+                else json.loads(json.dumps(_REVIEW_FAIL))
             )
         if schema == "game":
             payload = dict(_PRIMARY_OUTPUTS["game"])
             if "审查意见" in user:
                 payload["notes"] = "已按审查意见补充计分与结束提示"
             return payload
-        return dict(_PRIMARY_OUTPUTS.get(schema or "prd", _PRIMARY_OUTPUTS["prd"]))
+        return json.loads(
+            json.dumps(_PRIMARY_OUTPUTS.get(schema or "prd", _PRIMARY_OUTPUTS["prd"]))
+        )

@@ -47,6 +47,21 @@ output/{task_id}/
     task.json
 ```
 
+## 质量审查
+
+生成的游戏必须通过两层审查才会交付：
+
+1. **机械门禁**：Playwright 在隔离浏览器中真实加载页面，检查页面加载、未处理 JS 错误、游戏区域、方向键、计分、结束后重开，默认阻断一切外部网络请求。
+2. **AI Reviewer**：读取 PRD、门禁报告与游戏代码，输出 `PASS / ITERATE`。
+
+门禁失败时，AI 给出的 PASS 会被强制改为 ITERATE；修复最多 2 次，每次修复前把旧版本存入 `history/`。
+
+```bash
+uv run playwright install chromium   # 可选；失败时自动回退到系统 Chrome
+```
+
+产物目录同时包含 `gate.json`（最新门禁报告）与 `review.json`（最终裁决）。
+
 ## 运行测试
 
 ```bash

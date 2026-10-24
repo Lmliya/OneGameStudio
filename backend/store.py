@@ -63,6 +63,16 @@ class TaskStore:
         record.artifacts[filename] = filename
         return filename
 
+    def snapshot(self, record: TaskRecord, source: str, target: str) -> str | None:
+        """把已有产物复制到子路径（如 history/index.v1.html），不登记为交付产物。"""
+        source_path = self.task_dir(record.task_id) / source
+        if not source_path.exists():
+            return None
+        target_path = self.task_dir(record.task_id) / target
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(source_path.read_text(encoding="utf-8"), encoding="utf-8")
+        return target
+
     def list_artifacts(self, task_id: str) -> dict[str, str]:
         """返回产物文件名到内容的映射（不含 task.json）。"""
         record = self.load(task_id)
