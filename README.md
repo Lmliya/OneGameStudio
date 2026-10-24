@@ -36,7 +36,7 @@ _上：Demo 模式总览（像素办公室 + CEO 指令台 + 游戏工作台）�
 要求：Python 3.12+、[uv](https://docs.astral.sh/uv/)。
 
 
- 终端执行一键启动（默认即为 MOCK + DEMO，零配置即开即用） 
+ 终端执行一键启动（默认即为 MOCK + DEMO，零配置即开即用）（一条命令即可使用） 
  ```bash
  uv run uvicorn backend.main:app --port 8000 # 浏览
 开 http://127.0.0.1:8000/ （建议
