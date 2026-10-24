@@ -1,5 +1,14 @@
 # 开发进度
 
+## 交接状态（2026-10-24）
+
+- 分支 `main`，最新提交 `dc4e17a 完成了6-harness`，与 `origin/main` 同步。
+- 未提交修改：仅 `docs/harness.md`（本地排版调整）。
+- 测试：`uv run pytest -q` → **78 passed**。
+- 交接文档：[HANDOFF.md](HANDOFF.md)（含架构、API、存储、问题与下一阶段入口）。
+
+---
+
 ## 阶段 6：Mini-6 Harness（已完成）
 
 **日期**：2026-10-24

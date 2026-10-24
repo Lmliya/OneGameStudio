@@ -2,9 +2,10 @@
 
 轻量级 AI 游戏开发工作室。输入一句自然语言游戏需求，四个 AI 员工（COO / Engineer / Reviewer / Marketer）协作产出可运行的 HTML5 游戏、审查报告与营销文案。
 
-> 当前进度：**阶段 5（像素办公室与实时驾驶舱）**。Mock 模式下可完整跑通
+> 当前进度：**阶段 6（Mini-6 Harness）已完成**。Mock 模式下可完整跑通
 > `COO → Engineer → Reviewer → Engineer → Reviewer → Marketer`，
 > 并在浏览器里实时观看四个 AI 员工工作、直接试玩生成结果。
+> 跨对话交接请看 [docs/HANDOFF.md](docs/HANDOFF.md)。
 
 ## 快速开始
 
@@ -167,7 +168,7 @@ docs/                 architecture.md / harness.md / progress.md
 output/               任务产物（不入库）
 ```
 
-详细设计见 `docs/architecture.md`。
+详细设计见 [docs/architecture.md](docs/architecture.md)，交接说明见 [docs/HANDOFF.md](docs/HANDOFF.md)。
 
 ## 设计约束
 
