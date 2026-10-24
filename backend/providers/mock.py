@@ -119,12 +119,6 @@ _PRIMARY_OUTPUTS: dict[str, dict] = {
         "html": SNAKE_HTML,
         "notes": "单文件 Canvas 2D 实现，无外部依赖",
     },
-    "marketing": {
-        "tagline": "一条蛇，一块屏幕，无限贪吃",
-        "description": "经典贪吃蛇玩法，方向键操作，节奏轻快，适合碎片时间。",
-        "hashtags": ["#贪吃蛇", "#休闲游戏", "#HTML5"],
-        "channels": ["朋友圈", "游戏社区"],
-    },
 }
 
 _REVIEW_FAIL = {
@@ -145,6 +139,93 @@ _REVIEW_PASS = {
     "issues": [],
     "suggestions": [],
     "summary": "玩法与 PRD 一致，机械门禁通过，可交付。",
+}
+
+
+MARKETING_PAYLOAD: dict = {
+    "positioning": {
+        "game_name": "贪吃蛇",
+        "core_gameplay": "方向键控制蛇吃食物变长，撞墙或撞到自己即结束",
+        "one_liner": "三分钟一局，看你能把这条蛇养多长",
+        "target_players": "喜欢碎片化休闲游戏的玩家",
+    },
+    "slogan": "摸鱼三分钟，你能让这条蛇活多久？",
+    "posts": [
+        {
+            "kind": "fun",
+            "title": "上班摸鱼神器，这条蛇我玩到停不下来",
+            "body": (
+                "一条蛇，一块屏幕，一个下午。\n"
+                "方向键控制，规则简单到不用看教程，"
+                "吃一个苹果长一截，撞墙就重来。"
+                "卡壳的时候来两把，脑子反而清醒了。"
+            ),
+            "emojis": ["🐍", "🍎", "🎮"],
+            "hashtags": ["#贪吃蛇", "#摸鱼日常", "#休闲游戏"],
+        },
+        {
+            "kind": "challenge",
+            "title": "挑战：连续吃 10 个苹果不撞墙，你能做到吗",
+            "body": (
+                "规则就一条：别撞墙，也别咬到自己。\n"
+                "越到后面越长，转弯的余地越小。"
+                "玩完在评论区报一下你的最高分，看看谁更能憋。"
+            ),
+            "emojis": ["🔥", "🏆", "👀"],
+            "hashtags": ["#游戏挑战", "#贪吃蛇", "#手速"],
+        },
+    ],
+    "plan": [
+        {
+            "day": 1,
+            "goal": "让身边人先玩上",
+            "action": "把游戏链接发到同学群，收集最直接的操作反馈",
+            "assets": ["游戏链接", "一句话卖点"],
+            "metrics": ["试玩人数", "评论数"],
+        },
+        {
+            "day": 2,
+            "goal": "发布第一篇体验向笔记",
+            "action": "发布摸鱼场景的小红书笔记",
+            "assets": ["第一篇文案", "游戏截图"],
+            "metrics": ["曝光量", "收藏数"],
+        },
+        {
+            "day": 3,
+            "goal": "收集真实玩家分数",
+            "action": "在笔记评论区发起晒分",
+            "assets": ["评论区引导话术"],
+            "metrics": ["评论数", "互动率"],
+        },
+        {
+            "day": 4,
+            "goal": "发布第二篇挑战向笔记",
+            "action": "发布挑战文案，引导用户晒最高分",
+            "assets": ["第二篇文案", "挑战规则图"],
+            "metrics": ["点击率", "点赞数"],
+        },
+        {
+            "day": 5,
+            "goal": "沉淀玩法说明",
+            "action": "整理一份新手三句话攻略",
+            "assets": ["攻略图文"],
+            "metrics": ["收藏数"],
+        },
+        {
+            "day": 6,
+            "goal": "观察留存",
+            "action": "对比两篇笔记带来的复访情况",
+            "assets": ["数据记录表"],
+            "metrics": ["二次访问率"],
+        },
+        {
+            "day": 7,
+            "goal": "复盘首周",
+            "action": "汇总有效动作，确定下一周只保留表现最好的渠道",
+            "assets": ["首周复盘文档"],
+            "metrics": ["互动总量", "有效反馈条数"],
+        },
+    ],
 }
 
 
@@ -191,6 +272,8 @@ class MockProvider(BaseProvider):
             if "审查意见" in user:
                 payload["notes"] = "已按审查意见补充计分与结束提示"
             return payload
+        if schema == "marketing":
+            return json.loads(json.dumps(MARKETING_PAYLOAD))
         return json.loads(
             json.dumps(_PRIMARY_OUTPUTS.get(schema or "prd", _PRIMARY_OUTPUTS["prd"]))
         )

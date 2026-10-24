@@ -30,6 +30,7 @@ from backend.core.vessel import (
     VesselError,
 )
 from backend.gate import GateUnavailableError, run_mechanical_gate
+from backend.marketing import find_fabricated_claims, render_marketing
 from backend.models.contract import TaskRecord, TaskStatus
 from backend.models.events import EventType, TraceEvent
 from backend.schemas import (
@@ -62,30 +63,33 @@ def render_prd(prd: GamePRD) -> str:
     lines += [f"{i}. {step}" for i, step in enumerate(prd.core_loop, 1)]
     lines += ["", "## 功能", ""] + [f"- {item}" for item in prd.features]
     lines += ["", "## 操作", ""] + [f"- {item}" for item in prd.controls]
-    lines += ["", f"**胜利条件**：{prd.win_condition}", f"**失败条件**：{prd.lose_condition}", ""]
-    return "\n".join(lines)
-
-
-def render_marketing(kit: MarketingKit) -> str:
-    lines = [
-        "# 营销素材",
+    lines += [
         "",
-        f"**一句话卖点**：{kit.tagline}",
-        "",
-        "## 介绍",
-        "",
-        kit.description,
-        "",
-        "## 话题标签",
-        "",
-        " ".join(kit.hashtags),
-        "",
-        "## 投放渠道",
+        f"**胜利条件**：{prd.win_condition}",
+        f"**失败条件**：{prd.lose_condition}",
         "",
     ]
-    lines += [f"- {channel}" for channel in kit.channels]
-    lines.append("")
     return "\n".join(lines)
+
+
+# 机械门禁检查项 -> 可对外宣传的功能描述
+_VERIFIED_LABELS = {
+    "game_area": "Canvas 画面渲染",
+    "arrow_keys": "方向键操作",
+    "score_updates": "实时计分",
+    "restart_after_gameover": "结束后可重新开始",
+}
+
+
+def _feature_summary(report: MechanicalReport) -> tuple[list[str], list[str]]:
+    """把门禁结果拆成"已验证可宣传"与"未验证不可宣传"两组。"""
+    verified: list[str] = []
+    for check in report.checks:
+        label = _VERIFIED_LABELS.get(check.id)
+        if label and check.status == "pass" and label not in verified:
+            verified.append(label)
+    unverified = [c.title for c in report.checks if c.status == "unverified"]
+    return verified, unverified
 
 
 def _gate_issue(check: GateCheck) -> Issue:
@@ -181,7 +185,15 @@ class WorkflowEngine:
             # ---------- Marketer ----------
             self._transition(record, TaskStatus.MARKETING)
             kit: MarketingKit = await self._call(
-                record, "marketer", self._marketing_context(prd, game, review)
+                record, "marketer", self._marketing_context(prd, game, review, report)
+            )
+            fabricated = find_fabricated_claims(kit)
+            if fabricated:
+                raise StageExecutionError(
+                    "营销文案包含无法证实的数据表述：" + "、".join(dict.fromkeys(fabricated))
+                )
+            self._store.write_artifact(
+                record, "marketing_kit.json", kit.model_dump_json(indent=2)
             )
             self._store.write_artifact(
                 record, "marketing_kit.md", render_marketing(kit)
@@ -293,12 +305,21 @@ class WorkflowEngine:
 
     @staticmethod
     def _marketing_context(
-        prd: GamePRD, game: GameArtifact, review: ReviewReport
+        prd: GamePRD,
+        game: GameArtifact,
+        review: ReviewReport,
+        report: MechanicalReport,
     ) -> str:
+        verified, unverified = _feature_summary(report)
         return (
             f"PRD：\n{prd.model_dump_json(indent=2)}\n\n"
-            f"游戏文件：{game.filename}\n"
-            f"审查结论：{review.verdict} - {review.summary}\n"
+            f"游戏文件：{game.filename}\n\n"
+            f"审查结论：{review.verdict} - {review.summary}\n\n"
+            "机械门禁已验证的功能（只能宣传这些）：\n"
+            + "\n".join(f"- {item}" for item in verified or ["（无）"])
+            + "\n\n未经自动验证、不得宣传的项：\n"
+            + "\n".join(f"- {item}" for item in unverified or ["（无）"])
+            + "\n\n注意：不得编造用户数、下载量、评分等任何数据；不得声称已发布到任何平台。"
         )
 
     def _transition(self, record: TaskRecord, target: TaskStatus) -> None:

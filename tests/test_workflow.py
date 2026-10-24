@@ -1,5 +1,6 @@
 """工作流全流程与异常场景测试（Mock / 脚本化模型，真实浏览器门禁）。"""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from backend.core.vessel import Vessel
 from backend.models.contract import TaskStatus
 from backend.providers.base import BaseProvider, ProviderResponse
+from backend.providers.mock import MARKETING_PAYLOAD
 from backend.store import TaskStore
 from backend.workflow import TaskAlreadyRunningError, WorkflowEngine
 
@@ -48,10 +50,7 @@ REVIEW_FAIL_JSON = """{
 
 REVIEW_PASS_JSON = '{"verdict":"PASS","issues":[],"suggestions":[],"summary":"可交付"}'
 
-MARKETING_JSON = """{
-  "tagline": "一条蛇的冒险", "description": "经典玩法，轻松上手",
-  "hashtags": ["#贪吃蛇"], "channels": ["朋友圈"]
-}"""
+MARKETING_JSON = json.dumps(MARKETING_PAYLOAD, ensure_ascii=False)
 
 
 class ScriptedProvider(BaseProvider):
@@ -113,6 +112,7 @@ async def test_full_flow_success_first_try(tmp_path: Path) -> None:
         "index.html",
         "gate.json",
         "review.json",
+        "marketing_kit.json",
         "marketing_kit.md",
     }
     task_dir = tmp_path / record.task_id
@@ -253,3 +253,57 @@ async def test_same_task_cannot_run_concurrently(tmp_path: Path) -> None:
         await engine.start(record.task_id)
 
     await first
+
+
+async def test_marketing_content_matches_game(tmp_path: Path) -> None:
+    """营销素材必须结构化、完整，且与游戏本身一致。"""
+    provider = ScriptedProvider(
+        {
+            "prd": [PRD_JSON],
+            "game": [GAME_JSON],
+            "review": [REVIEW_PASS_JSON],
+            "marketing": [MARKETING_JSON],
+        }
+    )
+    engine, _, record = make_engine(tmp_path, provider)
+
+    result = await engine.start(record.task_id)
+
+    assert result.status is TaskStatus.COMPLETED
+    task_dir = tmp_path / record.task_id
+    kit = json.loads((task_dir / "marketing_kit.json").read_text(encoding="utf-8"))
+
+    assert kit["positioning"]["game_name"] == "贪吃蛇"
+    assert len(kit["posts"]) == 2
+    assert {post["kind"] for post in kit["posts"]} == {"fun", "challenge"}
+    assert sorted(day["day"] for day in kit["plan"]) == list(range(1, 8))
+
+    markdown = (task_dir / "marketing_kit.md").read_text(encoding="utf-8")
+    assert kit["slogan"] in markdown
+    for post in kit["posts"]:
+        assert post["title"] in markdown
+
+
+async def test_fabricated_marketing_claims_keep_game(tmp_path: Path) -> None:
+    """编造数据必须被拦下，但已通过审查的游戏不能被删除。"""
+    bad_kit = json.loads(MARKETING_JSON)
+    bad_kit["positioning"]["one_liner"] = "已经有 10 万用户玩过的贪吃蛇"
+    provider = ScriptedProvider(
+        {
+            "prd": [PRD_JSON],
+            "game": [GAME_JSON],
+            "review": [REVIEW_PASS_JSON],
+            "marketing": [json.dumps(bad_kit, ensure_ascii=False)],
+        }
+    )
+    engine, _, record = make_engine(tmp_path, provider)
+
+    result = await engine.start(record.task_id)
+
+    assert result.status is TaskStatus.FAILED
+    assert "无法证实" in result.error
+    task_dir = tmp_path / record.task_id
+    assert (task_dir / "index.html").exists()
+    assert (task_dir / "review.json").exists()
+    assert not (task_dir / "marketing_kit.md").exists()
+    assert not (task_dir / "marketing_kit.json").exists()

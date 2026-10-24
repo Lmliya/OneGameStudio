@@ -62,6 +62,15 @@ uv run playwright install chromium   # 可选；失败时自动回退到系统 C
 
 产物目录同时包含 `gate.json`（最新门禁报告）与 `review.json`（最终裁决）。
 
+## 营销素材
+
+审查通过后 Marketer 会产出两份文件：
+
+- `marketing_kit.json`：游戏定位、Slogan、两篇小红书文案、七天推广计划，供前端渲染
+- `marketing_kit.md`：同一内容的人读版
+
+只能宣传机械门禁已验证的功能；一旦检测到编造的「用户数 / 下载量」等表述，营销阶段失败，但已通过审查的游戏文件会保留。
+
 ## 运行测试
 
 ```bash

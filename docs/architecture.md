@@ -1,6 +1,6 @@
 # OneGameStudio 架构说明
 
-> 版本：v0.4（阶段 3：双层审查与自动修复）
+> 版本：v0.5（阶段 4：Vibe Marketing）
 > 本文只描述已实现的部分，未实现的内容标注为"规划中"。
 
 ## 1. 项目定位
@@ -141,7 +141,27 @@ ITERATE
 最多 2 次，仍不通过 -> needs_attention
 ```
 
-Reviewer 只写 `review.json`，Marketer 只写 `marketing_kit.md`，两者都不改 `index.html`。
+Reviewer 只写 `review.json`，Marketer 只写 `marketing_kit.*`，两者都不改 `index.html`。
+
+## 6.5 营销阶段
+
+进入条件：最终裁决为 `PASS`。状态机不允许从 `reviewing` 直接跳到 `marketing`，必须满足裁决。
+
+输入：PRD、游戏文件名、审查结论、机械门禁的「已验证功能」清单。
+
+输出：
+
+| 文件                 | 用途                                            |
+| -------------------- | ----------------------------------------------- |
+| `marketing_kit.json` | 前端结构化渲染                                  |
+| `marketing_kit.md`   | 人读版（定位 / Slogan / 两篇文案 / 7 天计划表） |
+
+真实性约束：
+
+- 只把门禁 `pass` 的功能映射为可宣传项（`_VERIFIED_LABELS`），未验证项在提示词中明确禁止宣传。
+- `find_fabricated_claims` 用正则拦截「数字 + 用户/玩家/下载/粉丝」等编造表述，命中即 `failed`。
+- 营销失败只影响营销产物，`index.html` 与 `review.json` 保留。
+- 全流程没有发布接口，不向任何第三方平台推送。
 
 ## 7. 产物
 
@@ -153,7 +173,8 @@ Reviewer 只写 `review.json`，Marketer 只写 `marketing_kit.md`，两者都�
 | `index.html`              | Engineer | 单文件游戏（当前版本） |
 | `gate.json`               | 门禁     | 最新一轮机械检查报告   |
 | `review.json`             | Reviewer | 最终裁决与问题清单     |
-| `marketing_kit.md`        | Marketer | 营销素材               |
+| `marketing_kit.json`      | Marketer | 结构化营销素材（前端） |
+| `marketing_kit.md`        | Marketer | 人读版营销素材         |
 | `task.json`               | 引擎     | 状态、事件、产物索引   |
 | `history/index.v{n}.html` | 引擎     | 修复前版本快照         |
 | `history/gate.v{n}.json`  | 引擎     | 每轮门禁报告           |

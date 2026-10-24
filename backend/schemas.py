@@ -6,7 +6,7 @@ schema 名称是 Talent YAML 与代码之间的唯一约定。
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class GamePRD(BaseModel):
@@ -51,13 +51,52 @@ class ReviewReport(BaseModel):
     )
 
 
-class MarketingKit(BaseModel):
-    """Marketer 产出：营销素材。"""
+class MarketingPositioning(BaseModel):
+    """游戏定位：只说真实存在的功能。"""
 
-    tagline: str
-    description: str
-    hashtags: list[str] = Field(default_factory=list)
-    channels: list[str] = Field(default_factory=list)
+    game_name: str
+    core_gameplay: str
+    one_liner: str
+    target_players: str
+
+
+class XiaohongshuPost(BaseModel):
+    """小红书文案。kind 区分体验向与挑战向。"""
+
+    kind: Literal["fun", "challenge"]
+    title: str
+    body: str
+    emojis: list[str] = Field(min_length=1)
+    hashtags: list[str] = Field(min_length=1)
+
+
+class PromotionDay(BaseModel):
+    """首周推广计划的一天。"""
+
+    day: int = Field(ge=1, le=7)
+    goal: str
+    action: str
+    assets: list[str] = Field(default_factory=list)
+    metrics: list[str] = Field(default_factory=list)
+
+
+class MarketingKit(BaseModel):
+    """Marketer 产出：结构化营销素材，供前端渲染。
+
+    约束：正好 2 篇小红书文案、正好 7 天计划。
+    """
+
+    positioning: MarketingPositioning
+    slogan: str = Field(min_length=4, max_length=80)
+    posts: list[XiaohongshuPost] = Field(min_length=2, max_length=2)
+    plan: list[PromotionDay] = Field(min_length=7, max_length=7)
+
+    @model_validator(mode="after")
+    def _check_plan(self) -> "MarketingKit":
+        days = sorted(item.day for item in self.plan)
+        if days != list(range(1, 8)):
+            raise ValueError("推广计划必须且只能覆盖 Day 1 至 Day 7")
+        return self
 
 
 class GateCheck(BaseModel):

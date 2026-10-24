@@ -1,5 +1,57 @@
 # 开发进度
 
+## 阶段 4：Vibe Marketing（已完成）
+
+**日期**：2026-10-24
+
+### 已实现
+
+- Marketer 输出契约重构为 `MarketingKit`：
+  - `positioning`：游戏名称、核心玩法、一句话卖点、目标玩家
+  - `slogan`
+  - `posts`：正好 2 篇（`fun` 趣味向 / `challenge` 挑战向），含标题、正文、Emoji、话题标签
+  - `plan`：正好 7 天，`day` 必须是 1–7 且不重复（`model_validator` 强校验）
+- 同时产出 `marketing_kit.json`（供前端）与 `marketing_kit.md`（供人读）
+- 营销素材与游戏一致性：
+  - 只有最终裁决 `PASS` 才进入 marketing（引擎状态机保证）
+  - 输入里带上门禁「已验证功能」清单，未验证项明确标注为不可宣传
+- 真实性校验 `find_fabricated_claims`：
+  - 正则拦截「数字 + 用户/玩家/下载/粉丝」等编造表述
+  - 命中即任务 `failed`，但已通过审查的 `index.html`、`review.json` 全部保留
+- Marketer 不写游戏代码，输出契约里也没有代码字段
+
+### 测试
+
+```
+uv run pytest -q  → 52 passed in 41.56s
+```
+
+新增 2 个工作流用例：
+
+- `test_marketing_content_matches_game`：两篇文案、7 天计划、markdown 含 slogan 与标题
+- `test_fabricated_marketing_claims_keep_game`：编造「10 万用户」被拦截，游戏产物保留
+
+### 端到端验收（真实运行）
+
+```
+task_id : a580ffc16032
+status  : completed | fix: 1
+artifacts: gate.json index.html marketing_kit.json marketing_kit.md prd.md review.json
+
+positioning keys: game_name, core_gameplay, one_liner, target_players
+slogan: 摸鱼三分钟，你能让这条蛇活多久？
+posts: [('fun', 上班摸鱼神器…), ('challenge', 挑战：连续吃 10 个苹果…)]
+plan days: [1, 2, 3, 4, 5, 6, 7]
+```
+
+### 未解决问题
+
+1. **编造检测是正则**：只能拦住常见口径，无法判断语义层面的夸大（如"史上最好玩"）。
+2. **未验证功能只能靠提示词约束**：Marketer 若忽略清单硬写未验证能力，目前不会被确定性拦截。
+3. **文案与玩法一致性未做实机校验**：用的是 PRD 标题与门禁标签，而不是解析游戏文本。
+
+---
+
 ## 阶段 3：双层审查与自动修复（已完成）
 
 **日期**：2026-10-23
