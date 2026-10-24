@@ -85,6 +85,26 @@ body {
   border-color: var(--accent-2);
 }
 
+.ceo-console select {
+  padding: 9px 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 2px solid var(--border);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.ceo-console select:focus {
+  outline: none;
+  border-color: var(--accent-2);
+}
+
+.ceo-console .source-input {
+  flex: 0 0 150px;
+  width: 150px;
+  font-size: 11px;
+}
+
 button {
   font-family: inherit;
   font-size: 12px;
@@ -419,6 +439,15 @@ ul.plain {
   padding: 5px;
   vertical-align: top;
   text-align: left;
+}
+
+.studio-note {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 2px dashed var(--warn);
+  color: var(--warn);
+  font-size: 11px;
+  line-height: 1.6;
 }
 
 /* ---------- 底部日志条 ---------- */

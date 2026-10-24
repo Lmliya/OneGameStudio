@@ -116,7 +116,13 @@ def make_engine(
 
 def test_tool_registry_exposes_exact_role_tools() -> None:
     assert ROLE_TOOLS == {
-        "coo": frozenset({"read_requirement", "write_prd"}),
+        "coo": frozenset({"read_requirement", "write_prd", "write_decision"}),
+        "creative": frozenset(
+            {"read_requirement", "read_prd", "read_game", "write_creative"}
+        ),
+        "delivery": frozenset(
+            {"read_requirement", "read_prd", "write_delivery"}
+        ),
         "engineer": frozenset({"read_prd", "write_game", "read_review"}),
         "reviewer": frozenset({"read_game", "run_tests", "write_review"}),
         "marketer": frozenset({"read_prd", "read_review", "write_marketing"}),
@@ -290,9 +296,10 @@ async def test_engine_budget_exhaustion_fails_task(tmp_path: Path) -> None:
     assert result.status is TaskStatus.FAILED
     assert "预算" in (result.error or "")
     assert result.budget is not None
-    assert result.budget.blocked_calls == 1
+    # 冲突阶段会同时发起 creative 与 delivery 两次调用，都被预算拦截
+    assert result.budget.blocked_calls == 2
     budget_events = [e for e in result.events if e.type is EventType.BUDGET_UPDATED]
-    assert budget_events and budget_events[-1].data["blocked_calls"] == 1
+    assert budget_events and budget_events[-1].data["blocked_calls"] == 2
 
 
 async def test_unknown_cost_is_marked_unknown() -> None:

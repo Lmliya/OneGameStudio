@@ -4,6 +4,7 @@
 用户批准启用、回滚、任务记录实际 Talent 版本、经验提取与 HTTP API。
 """
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -52,7 +53,14 @@ def _approved_reviewer(service: EvolutionService):
 
 def test_seed_registers_v1_for_all_talents(evo) -> None:
     store, _ = evo
-    assert store.talent_names() == ["coo", "engineer", "marketer", "reviewer"]
+    assert store.talent_names() == [
+        "coo",
+        "creative",
+        "delivery",
+        "engineer",
+        "marketer",
+        "reviewer",
+    ]
     for name in store.talent_names():
         versions = store.versions(name)
         assert len(versions) == 1
@@ -68,6 +76,15 @@ def test_seed_is_idempotent(evo) -> None:
     store.ensure_seeded()
     assert len(store.versions("reviewer")) == 1
     assert store.active_version("reviewer").version == 1
+
+
+def test_active_version_self_heals_when_store_deleted(evo, tmp_path: Path) -> None:
+    """版本库被清理后（例如删除 output/），读取启用版本应自动重建 v1。"""
+    store, _ = evo
+    shutil.rmtree(tmp_path / "evolution")
+    assert store.active_version("coo").label == "coo@v1"
+    assert (tmp_path / "evolution" / "talents" / "coo" / "active.json").exists()
+    assert store.effective_spec("coo").system_prompt
 
 
 def test_verified_lesson_requires_evidence() -> None:
@@ -334,6 +351,8 @@ def test_api_full_evolution_flow(api) -> None:
     talents = client.get("/api/talents").json()
     assert {item["talent_name"] for item in talents} == {
         "coo",
+        "creative",
+        "delivery",
         "engineer",
         "marketer",
         "reviewer",

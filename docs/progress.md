@@ -1,12 +1,113 @@
 # 开发进度
 
-## 交接状态（2026-10-24）
+## 交接状态（2026-10-24，阶段 9 完成后）
 
-- 分支 `main`，最新提交 `ec70e94 补充跨对话交接文档并同步阶段6状态说明`；阶段 8 改动尚未提交。
-- 未提交修改：`backend/`（config、vessel、main、contract、talent、engine）、`frontend/`（index、style、app、talent.js）、`talents/*.yaml`、`tests/test_evolution.py`、`backend/evolution/`、文档。
-- 测试：`uv run pytest -q` → **97 passed**。
-- 交接文档：[HANDOFF.md](HANDOFF.md)（含架构、API、存储、问题与下一阶段入口）。
-- 阶段 8 说明：[talent-evolution.md](talent-evolution.md)。
+- 分支 `main`，最新提交 `73dd5a2 完成了自动进化的`；阶段 9 后端主体已在该提交中，前端、引擎补丁、测试与文档仍有未提交改动。
+- 未提交修改：`backend/workflow/engine.py`（并行墙钟指标补丁）、`frontend/`（六人办公室、SOP 选择器、Studio 面板）、`talents/coo.yaml`、测试与文档；其余阶段 9 后端代码已包含在最新提交中。
+- 测试：`uv run pytest -q` → **109 passed in 61.14s**。
+- 交接文档：[HANDOFF.md](HANDOFF.md)。
+- 阶段 9 说明：[conflict-protocol.md](conflict-protocol.md)、[fast-sop.md](fast-sop.md)。
+
+---
+
+## 阶段 9：双角色冲突协作与极速 SOP（已完成）
+
+**日期**：2026-10-24
+
+目标：在现有四员工、Talent 自进化、Mini-6 Harness、版本与像素办公室之上，新增 Creative / Delivery 两名员工，实现冲突裁决与 FAST / BALANCED / CREATIVE 三种 SOP，并把本次 Run 的 SOP、裁决与 Talent 版本写入不可变游戏版本。
+
+### 已实现
+
+- **两名新员工**：`talents/creative.yaml`、`talents/delivery.yaml`，复用 Talent + Vessel，没有新增模型执行器。
+  - Creative 输出 `CreativeProposal`：`innovation / player_value / complexity / priority / rationale`。
+  - Delivery 输出 `DeliveryAssessment`：`risk / feasibility / simplification / priority / rationale`。
+- **工具权限**：新增 `write_creative`、`write_delivery`、`write_decision`；加载期与运行时双重校验，两名总监不能写游戏或营销。
+- **Conflict Gate**：BALANCED 下两名总监真实并行（`MAX_CONCURRENT_CALLS=2`），COO 必须输出 `conflict_decision`（adopt / simplify / reject + 理由），缺失即任务失败。
+- **有限讨论**：CREATIVE 顺序为 Creative → Delivery 挑战 → 最多一轮 Creative 修订（仅当 feasibility 非 feasible），修订前提案留档 `history/creative_proposal.round1.json`。
+- **SOP 选择**：`backend/workflow/sop.py`，手动优先；自动规则为 source 分支 / 创新关键词 → CREATIVE、短句局部修改 → FAST、其余 → BALANCED，原因写入 `TaskRecord.sop_reason` 与 `sop.selected` 事件。
+- **FAST 边界**：只跳过 Creative / Delivery / Marketer，机械门禁、AI Reviewer、修复循环、预算与版本记录全部保留；状态机新增 `reviewing → completed`。
+- **不可变游戏版本**：`GameVersion` 记录 `sop_mode / sop_reason / conflict_decision / creative_talent_version / delivery_talent_version / source_version_id / source_sha256 / run_id / parent_version_id`；文件存在即拒绝覆盖。
+- **分支**：带 `source_version_id` 创建任务时复制父 HTML 到 `source/` 并记录 SHA-256，父版本不变。
+- **指标**：`TaskRecord.metrics` 记录 `elapsed_ms / model_calls / parallel_wall_ms`。
+- **前端**：六人像素办公室（3×2）、SOP 下拉（AUTO/FAST/BALANCED/CREATIVE）、来源版本输入、Studio 标签（提案 / 交付判断 / COO 裁决 / 版本记录 / 指标）、真实事件驱动的观点气泡；Mock 模式明确标注。
+- **自进化兼容**：为 creative / delivery 各补 4 条固定回归用例，诊断与提案链路可用。
+
+### 新增 / 修改文件
+
+```
+新建  backend/models/sop.py            SOPMode / ConflictDecision / RunMetrics
+新建  backend/models/version.py        GameVersion
+新建  backend/workflow/sop.py          SOP 选择规则
+新建  talents/creative.yaml            Creative Director
+新建  talents/delivery.yaml            Delivery Director
+新建  tests/test_sop.py                场景 A/B/C、权限、并行、预算、异常恢复
+新建  tests/test_versions.py           版本递增、拒绝覆盖、跨任务、分支 SHA、非法 ID
+新建  docs/conflict-protocol.md        冲突协议与边界
+新建  docs/fast-sop.md                 极速 SOP 规则与实测调用次数
+
+修改  backend/schemas.py               CreativeProposal / DeliveryAssessment / conflict_decision
+修改  backend/tools.py                 新增三个工具与角色授权
+修改  backend/providers/mock.py        新 schema、挑战与修订标记、裁决 payload
+修改  backend/evolution/regression.py  creative / delivery 固定用例
+修改  backend/models/contract.py       SOP、版本、run_id、指标字段
+修改  backend/models/events.py         sop.selected / conflict.opinion / conflict.resolved
+修改  backend/store.py                 不可变版本、分支复制、原子写
+修改  backend/config.py                OPINION_MAX_OUTPUT_TOKENS、并发默认 2
+修改  backend/workflow/state_machine.py  reviewing → completed（FAST）
+修改  backend/core/vessel.py           max_output_tokens 覆盖
+修改  backend/workflow/engine.py       冲突阶段、并行提交、FAST/BALANCED/CREATIVE、指标
+修改  backend/main.py                  可选 sop_mode/source_version_id、版本端点、v0.9.0
+修改  frontend/index.html/style.css    SOP 选择器、来源版本、Studio 标签
+修改  frontend/office.js               六人布局、观点气泡
+修改  frontend/app.js                  SOP/冲突事件、Studio 面板、版本列表
+修改  talents/coo.yaml                 write_decision 与决策提示
+修改  tests/test_workflow.py / test_harness.py / test_talents.py / test_evolution.py / test_api.py
+```
+
+### 测试
+
+```
+uv run pytest -q  → 109 passed in 61.14s（阶段 8 为 97，新增 12）
+```
+
+新增覆盖：
+
+- 场景 A：短句改背景色 → FAST，3 次调用，无总监/营销产物，门禁与 Reviewer 仍执行。
+- 场景 B：经典小游戏 → BALANCED，6 次调用，`max_active=2`、`parallel_wall_ms>0`、COO 裁决落盘。
+- 场景 C：历史版本分支 → CREATIVE，7 次调用，Creative 提案 + 1 轮修订，父版本 SHA 不变。
+- 角色权限、结构化输出校验、COO 缺决策即失败、Delivery 失败保留创意产物、预算阻断两名顾问。
+- 版本递增、拒绝覆盖、跨任务查找、分支复制与 SHA、非法 ID、缺失父版本、API 版本端点。
+
+### 实测对比
+
+**测试环境（脚本化供应商，门禁桩，Reviewer 首轮 PASS）**：
+
+| 场景             | SOP      | 调用次数 | 产物差异                             |
+| ---------------- | -------- | -------- | ------------------------------------ |
+| 改背景色         | FAST     | 3        | 无总监意见、无营销素材               |
+| 经典小游戏       | BALANCED | 6        | 两份意见 + 裁决 + 营销素材           |
+| 历史版本玩法分支 | CREATIVE | 7        | 提案 + 1 轮修订留档，父版本 SHA 不变 |
+
+**真实 Mock 服务端（`MOCK_MODE=true`、`STAGE_MIN_SECONDS=6`）**：
+
+| 场景             | SOP      | 状态      | 调用次数 | 耗时   | 并行墙钟 |
+| ---------------- | -------- | --------- | -------- | ------ | -------- |
+| 改背景色         | FAST     | completed | 5        | 38.2 s | 0 ms     |
+| 经典小游戏       | BALANCED | completed | 8        | 50.4 s | 10 ms    |
+| 历史版本玩法分支 | CREATIVE | completed | 9        | 62.4 s | 0 ms     |
+
+两组差异来自服务端 Mock Reviewer 首轮返回 `ITERATE`（多一次修复 + 复审），测试桩则首轮 PASS。**不宣称新模式一定更快**：Mock 没有真实网络延迟，`elapsed_ms` 只能证明指标被记录；真实性能取决于模型、网络与修复轮数。
+
+浏览器手工验收（Playwright 驱动的浏览器 Agent）：SOP 下拉、六名员工、BALANCED 徽章、Studio 的提案/裁决/版本/指标、Game 预览全部通过，控制台无 JS 报错，六人在 880×520 画布内无重叠或裁切。
+
+### 未解决问题
+
+1. 冲突裁决只由 COO 输出，没有独立第三方裁决 Agent。
+2. CREATIVE 额外修订轮数固定为 1，不可配置。
+3. 并发上限 2 会扩大预算超额窗口（最坏多一次顾问调用）。
+4. Mock 的意见是确定性模板，不代表真实模型观点质量。
+5. EventBus / 预算仍为进程内状态，多 worker 不适用。
+6. 前端 Studio 面板只做结构与 HTTP 校验，没有浏览器点击级 E2E。
 
 ---
 

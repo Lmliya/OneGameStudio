@@ -11,9 +11,16 @@ from backend.tools import ROLE_TOOLS
 TALENTS_DIR = Path(__file__).resolve().parents[1] / "talents"
 
 
-def test_load_all_four_talents() -> None:
+def test_load_all_six_talents() -> None:
     talents = list_talents(TALENTS_DIR)
-    assert set(talents) == {"coo", "engineer", "reviewer", "marketer"}
+    assert set(talents) == {
+        "coo",
+        "creative",
+        "delivery",
+        "engineer",
+        "reviewer",
+        "marketer",
+    }
     for talent in talents.values():
         assert talent.name
         assert talent.role
@@ -44,6 +51,8 @@ def test_expected_output_schemas() -> None:
     assert talents["engineer"].output_schema == "game"
     assert talents["reviewer"].output_schema == "review"
     assert talents["marketer"].output_schema == "marketing"
+    assert talents["creative"].output_schema == "creative_proposal"
+    assert talents["delivery"].output_schema == "delivery_assessment"
 
 
 def test_model_is_not_hardcoded() -> None:

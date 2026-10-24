@@ -1,4 +1,4 @@
-// 像素办公室：Canvas 2D 绘制四名员工、办公桌与装饰。
+// 像素办公室：Canvas 2D 绘制六名员工、办公桌与装饰。
 // 员工状态只由后端 agent.status_changed 事件驱动，本文件不含任何计时器模拟进度。
 // 同一时刻最多只有一名员工播放动画：由 activeAgent 记录当前焦点。
 
@@ -8,6 +8,7 @@ const Office = (() => {
   const W = canvas.width;
   const H = canvas.height;
 
+  // 3 列 × 2 行：上排 COO / CREATIVE / DELIVERY，下排 ENGINEER / REVIEWER / MARKETER
   const AGENTS = [
     {
       id: "coo",
@@ -20,14 +21,34 @@ const Office = (() => {
       y: 156,
     },
     {
+      id: "creative",
+      name: "CREATIVE",
+      role: "创意总监",
+      color: "#ff9e64",
+      hair: "#8a4b12",
+      skin: "#f2c9a0",
+      x: 440,
+      y: 156,
+    },
+    {
+      id: "delivery",
+      name: "DELIVERY",
+      role: "交付总监",
+      color: "#56d4dd",
+      hair: "#1d5a66",
+      skin: "#f2c9a0",
+      x: 730,
+      y: 156,
+    },
+    {
       id: "engineer",
       name: "ENGINEER",
       role: "游戏工程师",
       color: "#f0883e",
       hair: "#7a3d12",
       skin: "#f2c9a0",
-      x: 520,
-      y: 156,
+      x: 150,
+      y: 380,
     },
     {
       id: "reviewer",
@@ -36,7 +57,7 @@ const Office = (() => {
       color: "#7ee787",
       hair: "#255c2c",
       skin: "#f2c9a0",
-      x: 150,
+      x: 440,
       y: 380,
     },
     {
@@ -46,14 +67,14 @@ const Office = (() => {
       color: "#c792ea",
       hair: "#4a2a6a",
       skin: "#f2c9a0",
-      x: 520,
+      x: 730,
       y: 380,
     },
   ];
 
   // 员工状态：值只会在 setAgent() 中被后端事件覆盖
   const state = new Map(
-    AGENTS.map((a) => [a.id, { status: "idle", message: "" }]),
+    AGENTS.map((a) => [a.id, { status: "idle", message: "", speech: "" }]),
   );
   // 当前唯一允许播放动画的员工；同一时刻只可能有一个
   let activeAgent = null;
@@ -199,7 +220,8 @@ const Office = (() => {
   }
 
   function drawFloorLamp() {
-    const lx = 690;
+    // 放在两列办公桌之间的过道，避免和六人布局的桌子重叠
+    const lx = 560;
     px(lx + 18, 250, 4, 164, "#3a4460");
     px(lx, 242, 40, 10, "#ffd866");
     px(lx + 4, 252, 32, 2, "#c9a83f");
@@ -402,9 +424,11 @@ const Office = (() => {
 
   function drawBubble(agent) {
     const st = state.get(agent.id);
-    // 只在"正在干活"或出错时冒泡，已完成/待命不长期占用画面
-    if (!SPEAKING.has(st.status) || !st.message) return;
-    const lines = wrap(st.message, 13);
+    // 冲突观点（setSpeech）来自真实 conflict.opinion 事件，即使员工已空闲也保留展示；
+    // 状态类发言只在“正在干活”或出错时冒泡，避免长期占用画面。
+    const text = st.speech || (SPEAKING.has(st.status) ? st.message : "");
+    if (!text) return;
+    const lines = wrap(text, 13);
     const boxW = Math.max(...lines.map((l) => [...l].length)) * 12 + 16;
     const boxH = lines.length * 15 + 12;
     const bx = Math.min(Math.max(agent.x - boxW / 2, 4), W - boxW - 4);
@@ -458,15 +482,23 @@ const Office = (() => {
     requirement = (text || "").trim();
   }
 
+  // 只更新观点气泡，不改变员工状态；文本必须来自后端 conflict.* 事件
+  function setSpeech(agentId, text) {
+    const entry = state.get(agentId);
+    if (!entry) return;
+    entry.speech = (text || "").trim();
+  }
+
   function resetAgents() {
     state.forEach((entry) => {
       entry.status = "idle";
       entry.message = "";
+      entry.speech = "";
     });
     activeAgent = null;
   }
 
   requestAnimationFrame(frame);
 
-  return { setAgent, setRequirement, resetAgents };
+  return { setAgent, setRequirement, setSpeech, resetAgents };
 })();

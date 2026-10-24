@@ -19,11 +19,13 @@ const state = {
   task: null,
   artifacts: {},
   history: [],
+  versions: [],
   logs: [],
   ws: null,
   retry: 0,
   currentVersion: "index.html",
   reconnectTimer: null,
+  mock: false,
 };
 
 const STATUS_CLASS = {
@@ -37,6 +39,18 @@ const STATUS_CLASS = {
   failed: "badge-danger",
   needs_attention: "badge-warn",
   cancelled: "badge-warn",
+};
+
+const SOP_LABEL = {
+  fast: "FAST",
+  balanced: "BALANCED",
+  creative: "CREATIVE",
+};
+
+const SOP_CLASS = {
+  fast: "badge-ok",
+  balanced: "badge-work",
+  creative: "badge-warn",
 };
 
 const STATUS_LABEL = {
@@ -63,12 +77,25 @@ const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
 
 const AGENT_NAME = {
   coo: "COO",
+  creative: "CREATIVE",
+  delivery: "DELIVERY",
   engineer: "ENGINEER",
   reviewer: "REVIEWER",
   marketer: "MARKETER",
 };
 
 // ---------- 通用状态 ----------
+
+function setSop(mode) {
+  const badge = el("sop-badge");
+  if (!mode) {
+    badge.textContent = "SOP --";
+    badge.className = "badge badge-wait";
+    return;
+  }
+  badge.textContent = `SOP ${SOP_LABEL[mode] || String(mode).toUpperCase()}`;
+  badge.className = `badge ${SOP_CLASS[mode] || "badge-wait"}`;
+}
 
 function setConn(text, cls) {
   connEl.textContent = text;
@@ -132,6 +159,28 @@ function applyEvent(event) {
         Office.setAgent(event.agent, event.status, event.message);
       }
       break;
+    case "sop.selected":
+      if (event.data && event.data.mode) {
+        state.task = state.task || {};
+        state.task.sop_mode = event.data.mode;
+        state.task.sop_reason = event.data.reason;
+        setSop(event.data.mode);
+      }
+      break;
+    case "conflict.opinion":
+      if (event.agent) Office.setSpeech(event.agent, event.message);
+      renderStudio();
+      break;
+    case "conflict.resolved":
+      if (event.data && event.data.decision) {
+        const decision = event.data.decision;
+        Office.setSpeech(
+          "coo",
+          `裁决 ${decision.decision}：${decision.rationale}`,
+        );
+      }
+      renderStudio();
+      break;
     case "task.status_changed":
       if (event.data && event.data.to) setTaskStatus(event.data.to);
       break;
@@ -169,6 +218,7 @@ function hydrate(task) {
   if (!task) return;
   state.task = task;
   setTaskStatus(task.status);
+  setSop(task.sop_mode);
   Office.setRequirement(task.requirement);
   Office.resetAgents();
   officeTaskEl.textContent = task.requirement;
@@ -177,6 +227,21 @@ function hydrate(task) {
   (task.events || []).forEach((event) => {
     if (event.agent && event.status) {
       Office.setAgent(event.agent, event.status, event.message);
+    }
+    // 冲突观点与 COO 裁决同样从真实事件恢复气泡，不伪造文本
+    if (event.type === "conflict.opinion" && event.agent) {
+      Office.setSpeech(event.agent, event.message);
+    }
+    if (
+      event.type === "conflict.resolved" &&
+      event.data &&
+      event.data.decision
+    ) {
+      const decision = event.data.decision;
+      Office.setSpeech(
+        "coo",
+        `裁决 ${decision.decision}：${decision.rationale}`,
+      );
     }
     state.logs.push({
       type: event.type,
@@ -232,18 +297,28 @@ function connect(taskId) {
 async function refreshArtifacts() {
   if (!state.taskId) return;
   try {
-    const [artifacts, history] = await Promise.all([
+    const [artifacts, history, versions, task] = await Promise.all([
       fetch(`/api/tasks/${state.taskId}/artifacts`).then((r) =>
         r.ok ? r.json() : {},
       ),
       fetch(`/api/tasks/${state.taskId}/history`).then((r) =>
         r.ok ? r.json() : [],
       ),
+      fetch(`/api/tasks/${state.taskId}/versions`).then((r) =>
+        r.ok ? r.json() : [],
+      ),
+      fetch(`/api/tasks/${state.taskId}`).then((r) => (r.ok ? r.json() : null)),
     ]);
     state.artifacts = artifacts || {};
     state.history = history || [];
+    state.versions = versions || [];
+    if (task) {
+      state.task = task;
+      setSop(task.sop_mode);
+    }
     renderReview();
     renderMarketing();
+    renderStudio();
     updatePreviewAvailability();
   } catch (error) {
     console.warn("产物读取失败", error);
@@ -409,6 +484,148 @@ function renderReview() {
   });
 }
 
+// ---------- Studio 标签页：冲突协作与 SOP 全景 ----------
+
+const DECISION_LABEL = {
+  adopt: "采用",
+  simplify: "简化",
+  reject: "拒绝",
+};
+const ADOPTED_LABEL = {
+  creative: "采纳创意总监",
+  delivery: "采纳交付总监",
+  both: "双方融合",
+  neither: "双方均未采纳",
+};
+const FEASIBILITY_LABEL = {
+  feasible: "可行",
+  risky: "有风险",
+  infeasible: "不可行",
+};
+const PRIORITY_LABEL = { high: "高", medium: "中", low: "低" };
+const COMPLEXITY_LABEL = { low: "低", medium: "中", high: "高" };
+
+function renderStudio() {
+  const body = el("studio-body");
+  if (!body) return;
+
+  const task = state.task || {};
+  const mode = task.sop_mode;
+  const creative = parsed("creative_proposal.json");
+  const delivery = parsed("delivery_assessment.json");
+  const decision = parsed("conflict_decision.json") || task.conflict_decision;
+  const metrics = task.metrics || {};
+
+  let html = `
+    <div class="block">
+      <h3>SOP · 运行指标</h3>
+      <div class="block-body">
+        <div class="metric-row">
+          <span>模式 <b>${esc(SOP_LABEL[mode] || mode || "待选择")}</b></span>
+          <span>调用次数 <b>${esc(metrics.model_calls ?? "-")}</b></span>
+          <span>实际耗时 <b>${esc(metrics.elapsed_ms ?? "-")} ms</b></span>
+          <span>并行墙钟 <b>${esc(metrics.parallel_wall_ms ?? "-")} ms</b></span>
+        </div>
+        <div class="muted" style="margin-top:6px">选择原因：${esc(
+          task.sop_reason || "尚未记录",
+        )}</div>
+        ${
+          state.mock
+            ? '<div class="studio-note">MOCK 模式：以下结构化观点由确定性 Mock 供应商生成，耗时与 token 仅为估算，不代表真实模型性能。</div>'
+            : ""
+        }
+      </div>
+    </div>`;
+
+  if (mode === "fast") {
+    html += `
+      <div class="block">
+        <h3>FAST 流程</h3>
+        <div class="block-body muted">
+          FAST 跳过创意总监、交付总监与营销阶段；机械门禁、AI 审查与修复循环仍完整执行。
+        </div>
+      </div>`;
+  } else {
+    html += `<div class="block">
+      <h3>创意总监 · Creative Director</h3>
+      <div class="block-body">${
+        creative
+          ? `<div><strong>${esc(creative.innovation)}</strong></div>
+             <div style="margin-top:6px">玩家价值：${esc(creative.player_value)}</div>
+             <div class="metric-row" style="margin-top:6px">
+               <span>复杂度 <b>${esc(COMPLEXITY_LABEL[creative.complexity] || creative.complexity)}</b></span>
+               <span>优先级 <b>${esc(PRIORITY_LABEL[creative.priority] || creative.priority)}</b></span>
+             </div>
+             <div class="muted" style="margin-top:6px">依据：${esc(creative.rationale)}</div>`
+          : '<span class="muted">本次运行没有创意总监意见。</span>'
+      }</div>
+    </div>
+    <div class="block">
+      <h3>交付总监 · Delivery Director</h3>
+      <div class="block-body">${
+        delivery
+          ? `<div><strong>${esc(delivery.risk)}</strong></div>
+             <div style="margin-top:6px">可行性：${esc(
+               FEASIBILITY_LABEL[delivery.feasibility] || delivery.feasibility,
+             )}</div>
+             <div>简化建议：${esc(delivery.simplification)}</div>
+             <div class="metric-row" style="margin-top:6px">
+               <span>优先级 <b>${esc(PRIORITY_LABEL[delivery.priority] || delivery.priority)}</b></span>
+             </div>
+             <div class="muted" style="margin-top:6px">依据：${esc(delivery.rationale)}</div>`
+          : '<span class="muted">本次运行没有交付总监意见。</span>'
+      }</div>
+    </div>`;
+  }
+
+  if (decision) {
+    html += `
+      <div class="block">
+        <h3>COO 最终决策</h3>
+        <div class="block-body">
+          <span class="verdict ${
+            decision.decision === "reject" ? "verdict-iterate" : "verdict-pass"
+          }">${esc(DECISION_LABEL[decision.decision] || decision.decision)}</span>
+          <span class="muted"> · ${esc(
+            ADOPTED_LABEL[decision.adopted_from] || decision.adopted_from || "",
+          )}</span>
+          <div style="margin-top:8px">${esc(decision.summary)}</div>
+          <div class="muted" style="margin-top:6px">理由：${esc(
+            decision.rationale,
+          )}</div>
+        </div>
+      </div>`;
+  }
+
+  if ((state.versions || []).length) {
+    html += `
+      <div class="block">
+        <h3>游戏版本记录</h3>
+        <div class="block-body">${state.versions
+          .map(
+            (version) => `
+          <div class="version-row">
+            <span class="v-label">V${esc(version.version_number)}</span>
+            <span class="tag">${esc(SOP_LABEL[version.sop_mode] || version.sop_mode)}</span>
+            <span class="muted">来源 ${esc(
+              version.source_version_id || "-",
+            )}</span>
+            <span class="muted">创意 Talent ${esc(
+              version.creative_talent_version || "-",
+            )}</span>
+            <span class="muted">交付 Talent ${esc(
+              version.delivery_talent_version || "-",
+            )}</span>
+          </div>`,
+          )
+          .join("")}
+        </div>
+      </div>`;
+  }
+
+  body.innerHTML = html;
+}
+
 // ---------- Marketing 标签页 ----------
 
 function renderMarketing() {
@@ -499,10 +716,16 @@ async function submitRequirement(requirement) {
   const submitBtn = el("submit");
   submitBtn.disabled = true;
   try {
+    const payload = { requirement };
+    const selected = el("sop-mode").value;
+    if (selected !== "auto") payload.sop_mode = selected;
+    const sourceVersion = el("source-version").value.trim();
+    if (sourceVersion) payload.source_version_id = sourceVersion;
+
     const response = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requirement }),
+      body: JSON.stringify(payload),
     });
     const data = await response.json();
     if (response.status === 409 && data.detail && data.detail.task_id) {
@@ -530,9 +753,11 @@ function attachTask(taskId) {
   state.task = null;
   state.artifacts = {};
   state.history = [];
+  state.versions = [];
   state.currentVersion = "index.html";
   state.logs = [];
   state.retry = 0;
+  setSop(null);
   taskIdEl.textContent = taskId;
   localStorage.setItem("ogs_task", taskId);
   frameEl.dataset.task = "";
@@ -559,6 +784,7 @@ el("reload-preview").addEventListener("click", () =>
 async function boot() {
   try {
     const health = await fetch("/api/health").then((r) => r.json());
+    state.mock = Boolean(health.mock_mode);
     setConn(health.mock_mode ? "Mock 模式" : "真实模式", "badge-ok");
   } catch (error) {
     setConn("后端未连接", "badge-danger");

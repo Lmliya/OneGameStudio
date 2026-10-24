@@ -610,6 +610,7 @@ class WorkflowEngine:
                 return_exceptions=True,
             )
             outcome.parallel_wall_ms = int((time.perf_counter() - started) * 1000)
+            record.metrics.parallel_wall_ms = outcome.parallel_wall_ms
 
             errors: list[BaseException] = []
             successful: list[tuple[str, AgentResult]] = []

@@ -1,19 +1,29 @@
 # OneGameStudio 架构说明
 
-> 版本：v0.8（阶段 8：AI 员工自进化）
+> 版本：v0.9（阶段 9：双角色冲突协作与极速 SOP）
 > 本文只描述已实现的部分，未实现的内容标注为"规划中"。
 > 跨对话交接、未完成模块与当前问题见 [HANDOFF.md](HANDOFF.md)。
 
 ## 1. 项目定位
 
-用户输入一句自然语言游戏需求，四个 AI 员工协作产出可运行的 HTML5 游戏、审查报告与营销文案：
+用户输入一句自然语言游戏需求，六个 AI 员工按所选 SOP 协作产出可运行的 HTML5 游戏、审查报告、冲突决策与营销文案：
 
-| 员工     | Talent id  | 输出契约                     |
-| -------- | ---------- | ---------------------------- |
-| COO      | `coo`      | `prd` → `GamePRD`            |
-| Engineer | `engineer` | `game` → `GameArtifact`      |
-| Reviewer | `reviewer` | `review` → `ReviewReport`    |
-| Marketer | `marketer` | `marketing` → `MarketingKit` |
+| 员工              | Talent id  | 输出契约                                     |
+| ----------------- | ---------- | -------------------------------------------- |
+| COO               | `coo`      | `prd` → `GamePRD`                            |
+| Creative Director | `creative` | `creative_proposal` → `CreativeProposal`     |
+| Delivery Director | `delivery` | `delivery_assessment` → `DeliveryAssessment` |
+| Engineer          | `engineer` | `game` → `GameArtifact`                      |
+| Reviewer          | `reviewer` | `review` → `ReviewReport`                    |
+| Marketer          | `marketer` | `marketing` → `MarketingKit`                 |
+
+三种 SOP 决定本次 Run 调用哪些员工：
+
+| SOP      | 流程                                                               | 适用                |
+| -------- | ------------------------------------------------------------------ | ------------------- |
+| FAST     | COO → Engineer → 门禁 + Reviewer → 新版本                          | 短句局部修改        |
+| BALANCED | COO + 双总监并行 → 裁决 → Engineer → Reviewer → Marketer → 新版本  | 常规游戏开发        |
+| CREATIVE | Creative → Delivery 挑战 →（最多一轮修订）→ 裁决 → 后续同 BALANCED | 重大玩法创新 / 分支 |
 
 ## 2. 核心公式
 
@@ -40,15 +50,15 @@ backend/
     schemas.py       输出契约 + 门禁报告
     talents.py       Talent 加载与工具白名单校验
     store.py         任务持久化与版本快照
-    models/          TaskRecord / TalentSpec / TraceEvent
+    models/          TaskRecord / TalentSpec / TraceEvent / SOPMode / GameVersion
     core/vessel.py   员工执行容器（使用启用 Talent 版本）
     providers/       base / mock / openai
     gate/            机械门禁（Playwright）
-    workflow/        状态机与编排引擎
+    workflow/        状态机、SOP 选择与编排引擎
     evolution/       阶段 8：版本库、经验库、提案、回归评估与审批 API
-talents/             四个员工的 YAML（基线 v1 由此播种）
+talents/             六个员工的 YAML（基线 v1 由此播种）
 tests/               pytest
-docs/                架构与进度
+docs/                架构、进度、冲突协议与极速 SOP
 output/{task_id}/    任务产物（不入库）
 output/evolution/    Talent 版本、经验、提案、评估（不入库）
 ```
@@ -59,19 +69,22 @@ output/evolution/    Talent 版本、经验、提案、评估（不入库）
 pending → planning → coding → reviewing → (fixing → reviewing)* → marketing → completed
                                   ↓                                  ↓
                             needs_attention                      failed
+FAST：reviewing（PASS）→ completed（不进入 marketing）
 ```
 
 `coding` 之后、`reviewing` 之前会插入机械门禁，但门禁不是独立状态——它是 `reviewing` 的输入。
 
-| 当前状态    | 允许迁移                                           |
-| ----------- | -------------------------------------------------- |
-| `pending`   | `planning`, `failed`                               |
-| `planning`  | `coding`, `failed`                                 |
-| `coding`    | `reviewing`, `failed`                              |
-| `reviewing` | `fixing`, `marketing`, `needs_attention`, `failed` |
-| `fixing`    | `reviewing`, `needs_attention`, `failed`           |
-| `marketing` | `completed`, `failed`                              |
-| 终态        | 不可迁移                                           |
+| 当前状态    | 允许迁移                                                        |
+| ----------- | --------------------------------------------------------------- |
+| `pending`   | `planning`, `failed`                                            |
+| `planning`  | `coding`, `failed`                                              |
+| `coding`    | `reviewing`, `failed`                                           |
+| `reviewing` | `fixing`, `marketing`, `completed`, `needs_attention`, `failed` |
+| `fixing`    | `reviewing`, `needs_attention`, `failed`                        |
+| `marketing` | `completed`, `failed`                                           |
+| 终态        | 不可迁移                                                        |
+
+`reviewing → completed` 只服务 FAST：审查 PASS 后直接交付，不再经过营销。`fixing → completed` 仍然禁止，避免绕过审查。
 
 ## 5. 双审查流程
 
@@ -209,21 +222,83 @@ rollback 到任意非候选版本
 - 评估当前只有 `engine=mock`，报告明确标注模拟；`MOCK_MODE=false` 时服务层直接报错，不伪造真实评测。
 - 前端第 5 个标签 `Talent` 提供诊断、提案、评估、批准与回滚入口。
 
+## 6.7 双角色冲突协作与 SOP（阶段 9）
+
+完整协议见 [conflict-protocol.md](conflict-protocol.md)，极速规则见 [fast-sop.md](fast-sop.md)。
+
+### 6.7.1 SOP 选择
+
+`backend/workflow/sop.py::select_sop` 在 Run 开始时确定模式，模型无权改变：
+
+```
+手动 sop_mode > source_version_id → CREATIVE > 创新关键词 → CREATIVE
+              > 短句 + 局部修改关键词 → FAST
+              > 其余 → BALANCED
+```
+
+结果写入 `TaskRecord.sop_mode / sop_reason`，并发出 `sop.selected` 事件（含 `manual` 与 `source_version_id`）。
+
+### 6.7.2 冲突阶段
+
+```
+FAST：跳过（conflict_decision = null）
+BALANCED：Creative ∥ Delivery（真实并行）→ COO 裁决
+CREATIVE：Creative → Delivery（带"挑战"上下文）
+          → 若 feasibility != feasible → Creative 修订 1 轮
+          → COO 裁决
+```
+
+- 并行使用 `asyncio.gather(return_exceptions=True)`；只执行调用，不写 `TaskRecord`，结束后串行提交，避免并发写坏 `task.json`。
+- `MAX_CONCURRENT_CALLS` 默认 2，否则并行会被信号量串行化。
+- 顾问意见输出上限 `OPINION_MAX_OUTPUT_TOKENS=600`，不约束游戏代码。
+- COO 必须输出 `conflict_decision`（`adopt / simplify / reject` + `rationale`）；缺失即任务失败。
+- 决策落盘 `conflict_decision.json`，事件 `conflict.resolved`，并写入版本记录。
+
+### 6.7.3 极速边界
+
+FAST 只跳过 Creative / Delivery / Marketer，**不跳过**机械门禁、AI Reviewer、修复循环、预算检查与版本记录。所有 Run 都把 `elapsed_ms / model_calls / parallel_wall_ms` 写入 `TaskRecord.metrics`。
+
+### 6.7.4 游戏版本
+
+`GameVersion` 是不可变记录：
+
+| 字段                               | 说明                           |
+| ---------------------------------- | ------------------------------ |
+| `version_id`                       | `{task_id}-v{n}`               |
+| `version_number`                   | 同任务内递增                   |
+| `parent_version_id`                | 同任务上一版本                 |
+| `source_version_id`                | 分支来源（跨任务）             |
+| `source_sha256`                    | 父版本 HTML 哈希               |
+| `sop_mode` / `sop_reason`          | 本次 Run 的 SOP 与原因         |
+| `conflict_decision`                | COO 裁决（FAST 为 null）       |
+| `creative/delivery_talent_version` | 本次实际使用的 Talent 版本     |
+| `run_id`                           | 本次 Run                       |
+| `artifact_path`                    | `versions/{task_id}-v{n}.html` |
+
+文件存在即拒绝覆盖；跨任务分支把父 HTML 复制到新任务 `source/{task_id}.html`，父版本 SHA-256 保持不变。
+
 ## 7. 产物
 
 `output/{task_id}/`：
 
-| 文件                      | 产出者   | 内容                   |
-| ------------------------- | -------- | ---------------------- |
-| `prd.md`                  | COO      | 结构化 PRD             |
-| `index.html`              | Engineer | 单文件游戏（当前版本） |
-| `gate.json`               | 门禁     | 最新一轮机械检查报告   |
-| `review.json`             | Reviewer | 最终裁决与问题清单     |
-| `marketing_kit.json`      | Marketer | 结构化营销素材（前端） |
-| `marketing_kit.md`        | Marketer | 人读版营销素材         |
-| `task.json`               | 引擎     | 状态、事件、产物索引   |
-| `history/index.v{n}.html` | 引擎     | 修复前版本快照         |
-| `history/gate.v{n}.json`  | 引擎     | 每轮门禁报告           |
+| 文件                                    | 产出者   | 内容                            |
+| --------------------------------------- | -------- | ------------------------------- |
+| `prd.md`                                | COO      | 结构化 PRD                      |
+| `creative_proposal.json`                | Creative | 创意提案（BALANCED/CREATIVE）   |
+| `delivery_assessment.json`              | Delivery | 交付判断（BALANCED/CREATIVE）   |
+| `conflict_decision.json`                | COO      | 冲突裁决与理由                  |
+| `index.html`                            | Engineer | 单文件游戏（当前版本）          |
+| `gate.json`                             | 门禁     | 最新一轮机械检查报告            |
+| `review.json`                           | Reviewer | 最终裁决与问题清单              |
+| `marketing_kit.json`                    | Marketer | 结构化营销素材（前端）          |
+| `marketing_kit.md`                      | Marketer | 人读版营销素材                  |
+| `task.json`                             | 引擎     | 状态、SOP、事件、指标、产物索引 |
+| `history/index.v{n}.html`               | 引擎     | 修复前版本快照                  |
+| `history/gate.v{n}.json`                | 引擎     | 每轮门禁报告                    |
+| `history/creative_proposal.round1.json` | 引擎     | CREATIVE 修订前提案留档         |
+| `versions/{task_id}-v{n}.json`          | 引擎     | 不可变 GameVersion 记录         |
+| `versions/{task_id}-v{n}.html`          | 引擎     | 不可变版本 HTML                 |
+| `source/{task_id}.html`                 | 引擎     | 分支任务的父版本副本            |
 
 写入策略：只新增不删除。任一阶段失败，已产出文件全部保留。
 
@@ -241,17 +316,20 @@ rollback 到任意非候选版本
 
 ### 7.5.1 前端结构
 
-| 区域          | 内容                                                 |
-| ------------- | ---------------------------------------------------- |
-| 顶部（64px）  | 需求输入、WebSocket 连接徽章、任务状态徽章、task_id  |
-| 左侧（55%）   | Canvas 2D 像素办公室：四张桌子 + 四名员工 + 任务牌   |
-| 右侧（45%）   | Game / Review / Marketing / Logs / Talent 五个标签页 |
-| 底部（116px） | 最近事件条（同内容在 Logs 页保留全量）               |
+| 区域          | 内容                                                           |
+| ------------- | -------------------------------------------------------------- |
+| 顶部（64px）  | 需求输入、SOP 选择器、来源版本输入、SOP/连接/状态徽章、task_id |
+| 左侧（55%）   | Canvas 2D 像素办公室：六张桌子 + 六名员工 + 任务牌 + 观点气泡  |
+| 右侧（45%）   | Game / Studio / Review / Marketing / Talent / Logs 六个标签页  |
+| 底部（116px） | 最近事件条（同内容在 Logs 页保留全量）                         |
 
 员工状态只有 `idle / working / reviewing / fixing / completed / error`，**全部由后端事件驱动**。前端没有任何计时器或随机数伪造进度；刷新页面后用快照回放事件，画面立即恢复。
 
+- 六人布局 3 列 × 2 行：上排 COO / Creative / Delivery，下排 Engineer / Reviewer / Marketer。
 - `activeAgent` 保证同一时刻最多只有一名员工播放动画，`idle/completed` 完全静止。
-- 员工动作需要真实时长支撑，因此节奏由后端 `STAGE_MIN_SECONDS`（默认 6 秒）控制：`WorkflowEngine._call` 在模型返回后补足等待，测试引擎默认 0，套件不受影响。
+- 冲突观点气泡只由 `conflict.opinion` / `conflict.resolved` 事件填充，不生成文案；`Studio` 标签展示提案、交付判断、COO 裁决、版本记录与运行指标。
+- Mock 模式在 Studio 面板与顶部徽章明确标注，避免把确定性模板当作真实模型输出。
+- 员工动作需要真实时长支撑，因此节奏由后端 `STAGE_MIN_SECONDS`（默认 6 秒）控制：`WorkflowEngine._wait_stage` 在模型返回后补足等待，测试引擎默认 0，套件不受影响。
 - 人物为背对观众坐姿（后脑勺 + 耳机），桌子在后、椅子在前，姓名与状态标签位于椅子下方。
 - 画布以 `object-fit: contain` 保持 880×520 比例，避免 CSS 拉伸。
 
@@ -259,16 +337,16 @@ rollback 到任意非候选版本
 
 `TraceEvent` 是唯一事件模型，写入 `task.json` 与推送 WebSocket 使用同一份数据：
 
-| 字段      | 说明                                               |
-| --------- | -------------------------------------------------- |
-| `type`    | 11 种事件类型之一                                  |
-| `task_id` | 任务标识                                           |
-| `agent`   | 相关员工（`coo/engineer/reviewer/marketer`），可选 |
-| `status`  | 员工状态或任务状态，可选                           |
-| `stage`   | 当前阶段，便于日志过滤                             |
-| `message` | 人读文案（顶部与日志直接展示）                     |
-| `data`    | 结构化附加信息（失败项、裁决、产物列表等）         |
-| `ts`      | ISO 时间戳                                         |
+| 字段      | 说明                                                                                  |
+| --------- | ------------------------------------------------------------------------------------- |
+| `type`    | 事件类型之一（含阶段 9 的 `sop.selected` / `conflict.opinion` / `conflict.resolved`） |
+| `task_id` | 任务标识                                                                              |
+| `agent`   | 相关员工（`coo/creative/delivery/engineer/reviewer/marketer`），可选                  |
+| `status`  | 员工状态或任务状态，可选                                                              |
+| `stage`   | 当前阶段，便于日志过滤                                                                |
+| `message` | 人读文案（顶部与日志直接展示）                                                        |
+| `data`    | 结构化附加信息（失败项、裁决、产物列表等）                                            |
+| `ts`      | ISO 时间戳                                                                            |
 
 旧版本 `task.json` 中的历史事件名（`state_changed` 等）由 `EventType._missing_` 映射到新枚举，读取无需迁移。
 
@@ -302,31 +380,32 @@ rollback 到任意非候选版本
 
 ## 8. API
 
-| 方法     | 路径                                     | 行为                                    |
-| -------- | ---------------------------------------- | --------------------------------------- |
-| GET      | `/api/health`                            | 返回运行模式                            |
-| POST     | `/api/tasks`                             | 202，后台执行；同需求运行中任务返回 409 |
-| POST     | `/api/tasks/{task_id}/cancel`            | 202，取消任务；终态任务返回 409         |
-| GET      | `/api/tasks/{task_id}`                   | 任务状态与事件                          |
-| GET      | `/api/tasks/{task_id}/artifacts`         | 产物文件名到内容的映射                  |
-| GET      | `/api/tasks/{task_id}/artifacts/{file}`  | 单个产物（白名单校验）                  |
-| GET      | `/api/tasks/{task_id}/history`           | 修复前版本快照列表                      |
-| GET      | `/preview/{task_id}/{file}`              | 隔离预览（CSP + nosniff + no-store）    |
-| WS       | `/ws/tasks/{task_id}`                    | 首帧快照 + 实时事件流                   |
-| GET      | `/api/talents`                           | 员工当前启用版本概览                    |
-| GET      | `/api/talents/{talent}`                  | 版本、经验、提案、评估、审计与阈值      |
-| POST     | `/api/talents/{talent}/diagnose`         | 固定回归诊断，生成 verified 经验        |
-| POST     | `/api/talents/{talent}/rollback`         | 回滚到非候选版本                        |
-| GET      | `/api/lessons`                           | 经验列表                                |
-| POST     | `/api/lessons/{id}/verify`               | candidate → verified（必须带证据）      |
-| POST     | `/api/lessons/{id}/reject`               | candidate → rejected                    |
-| POST     | `/api/tasks/{task_id}/lessons`           | 从终态任务提取经验                      |
-| GET/POST | `/api/evolution/proposals`               | 提案列表 / 新建提案（仅 verified 经验） |
-| GET      | `/api/evolution/proposals/{id}`          | 单个提案                                |
-| POST     | `/api/evolution/proposals/{id}/evaluate` | 固定回归评估                            |
-| POST     | `/api/evolution/proposals/{id}/approve`  | 评估通过后批准并启用                    |
-| POST     | `/api/evolution/proposals/{id}/reject`   | 拒绝提案与候选版本                      |
-| GET      | `/api/evolution/evaluations/{id}`        | 评估报告                                |
+| 方法     | 路径                                     | 行为                                                                            |
+| -------- | ---------------------------------------- | ------------------------------------------------------------------------------- |
+| GET      | `/api/health`                            | 返回运行模式                                                                    |
+| POST     | `/api/tasks`                             | 202，后台执行；可选 `sop_mode` 与 `source_version_id`；同需求运行中任务返回 409 |
+| POST     | `/api/tasks/{task_id}/cancel`            | 202，取消任务；终态任务返回 409                                                 |
+| GET      | `/api/tasks/{task_id}`                   | 任务状态、SOP、指标与事件                                                       |
+| GET      | `/api/tasks/{task_id}/artifacts`         | 产物文件名到内容的映射                                                          |
+| GET      | `/api/tasks/{task_id}/artifacts/{file}`  | 单个产物（白名单校验）                                                          |
+| GET      | `/api/tasks/{task_id}/history`           | 修复前版本快照列表                                                              |
+| GET      | `/api/tasks/{task_id}/versions`          | 不可变 GameVersion 列表                                                         |
+| GET      | `/preview/{task_id}/{file}`              | 隔离预览（CSP + nosniff + no-store）                                            |
+| WS       | `/ws/tasks/{task_id}`                    | 首帧快照 + 实时事件流                                                           |
+| GET      | `/api/talents`                           | 员工当前启用版本概览                                                            |
+| GET      | `/api/talents/{talent}`                  | 版本、经验、提案、评估、审计与阈值                                              |
+| POST     | `/api/talents/{talent}/diagnose`         | 固定回归诊断，生成 verified 经验                                                |
+| POST     | `/api/talents/{talent}/rollback`         | 回滚到非候选版本                                                                |
+| GET      | `/api/lessons`                           | 经验列表                                                                        |
+| POST     | `/api/lessons/{id}/verify`               | candidate → verified（必须带证据）                                              |
+| POST     | `/api/lessons/{id}/reject`               | candidate → rejected                                                            |
+| POST     | `/api/tasks/{task_id}/lessons`           | 从终态任务提取经验                                                              |
+| GET/POST | `/api/evolution/proposals`               | 提案列表 / 新建提案（仅 verified 经验）                                         |
+| GET      | `/api/evolution/proposals/{id}`          | 单个提案                                                                        |
+| POST     | `/api/evolution/proposals/{id}/evaluate` | 固定回归评估                                                                    |
+| POST     | `/api/evolution/proposals/{id}/approve`  | 评估通过后批准并启用                                                            |
+| POST     | `/api/evolution/proposals/{id}/reject`   | 拒绝提案与候选版本                                                              |
+| GET      | `/api/evolution/evaluations/{id}`        | 评估报告                                                                        |
 
 未知 task_id 的 WebSocket 连接会被直接关闭。
 
@@ -384,6 +463,21 @@ rollback 到任意非候选版本
 | 审批与回滚    | `evolution/service.py` + `evolution/api.py`                                    |
 | 运行时接入    | `core/vessel.py`（启用版本 + checklist 注入 + 版本标签）、`workflow/engine.py` |
 | 前端          | `frontend/talent.js`（第 5 个标签）                                            |
+
+## 10.6 阶段 9 落位情况
+
+| 能力           | 实现位置                                                                             |
+| -------------- | ------------------------------------------------------------------------------------ |
+| SOP 选择       | `workflow/sop.py`（手动优先 + 规则自动选择 + 原因）                                  |
+| 冲突协议模型   | `models/sop.py`（`SOPMode` / `ConflictDecision` / `RunMetrics`）                     |
+| 两名新员工     | `talents/creative.yaml`、`talents/delivery.yaml` + `schemas.py` 两个输出契约         |
+| 工具权限       | `tools.py`（`write_creative` / `write_delivery` / `write_decision`）                 |
+| 并行冲突阶段   | `workflow/engine.py::_conflict_stage`（执行与落盘分离、限一轮修订）                  |
+| COO 决策       | `GamePRD.conflict_decision` + `conflict_decision.json` + `conflict.resolved`         |
+| 不可变游戏版本 | `models/version.py` + `store.save_version/find_version` + `/api/tasks/{id}/versions` |
+| 分支与哈希     | `TaskStore.create`（复制父 HTML、记录 `source_sha256`）                              |
+| 前端           | `frontend/office.js`（六人）、`app.js`（SOP 选择器 / Studio 面板 / 观点气泡）        |
+| 测试           | `tests/test_sop.py`、`tests/test_versions.py`                                        |
 
 ## 11. 运行依赖
 

@@ -14,7 +14,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="logo">▚</span> ONEGAMESTUDIO
-        <span class="ver">v0.8</span>
+        <span class="ver">v0.9</span>
       </div>
 
       <form id="ceo-form" class="ceo-console" autocomplete="off">
@@ -25,10 +25,24 @@
           placeholder="CEO 需求：例如做一个能计分的贪吃蛇小游戏"
           required
         />
+        <select id="sop-mode" title="SOP 模式：auto 由后端规则自动选择">
+          <option value="auto">SOP AUTO</option>
+          <option value="fast">FAST</option>
+          <option value="balanced">BALANCED</option>
+          <option value="creative">CREATIVE</option>
+        </select>
+        <input
+          id="source-version"
+          class="source-input"
+          type="text"
+          placeholder="来源版本 ID（可选）"
+          title="填写历史版本 ID 可从该版本创建创新分支"
+        />
         <button id="submit" type="submit">开始开发</button>
       </form>
 
       <div class="status-group">
+        <span id="sop-badge" class="badge badge-wait">SOP --</span>
         <span id="conn" class="badge badge-wait">连接中…</span>
         <span id="task-status" class="badge badge-wait">空闲</span>
         <span id="task-id" class="task-id"></span>
@@ -47,6 +61,7 @@
       <aside class="deliverables panel">
         <nav class="tabs" id="tabs">
           <button type="button" data-tab="game" class="active">Game</button>
+          <button type="button" data-tab="studio">Studio</button>
           <button type="button" data-tab="review">Review</button>
           <button type="button" data-tab="marketing">Marketing</button>
           <button type="button" data-tab="talent">Talent</button>
@@ -77,6 +92,10 @@
                 <span>游戏生成后会出现在这里</span>
               </div>
             </div>
+          </section>
+
+          <section id="tab-studio" class="tab-pane hidden">
+            <div id="studio-body" class="scroll"></div>
           </section>
 
           <section id="tab-review" class="tab-pane hidden">

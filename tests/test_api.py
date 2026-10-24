@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 import backend.main as main
 from backend.core.vessel import Vessel
 from backend.models.contract import TaskStatus
+from backend.models.sop import SOPMode
+from backend.models.version import GameVersion
 from backend.providers.mock import MockProvider
 from backend.store import TaskStore
 from backend.workflow import WorkflowEngine
@@ -153,6 +155,58 @@ def test_history_lists_snapshots(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json() == ["history/index.v1.html"]
+
+
+def test_versions_endpoint_and_source_branch(client: TestClient, tmp_path: Path) -> None:
+    """版本列表可读；分支任务会复制父版本；非法或缺失父版本被拒绝。"""
+    created = client.post("/api/tasks", json={"requirement": "版本接口测试"})
+    task_id = created.json()["task_id"]
+    record = main.store.load(task_id)
+    html = "<html><body><canvas></canvas>父版本</body></html>"
+    main.store.write_artifact(record, "index.html", html)
+    version = GameVersion(
+        version_id=f"{task_id}-v1",
+        version_number=1,
+        task_id=task_id,
+        run_id=record.run_id,
+        sop_mode=SOPMode.BALANCED,
+        sop_reason="测试",
+        artifact_path=f"versions/{task_id}-v1.html",
+    )
+    main.store.save_version(record, version, html)
+
+    response = client.get(f"/api/tasks/{task_id}/versions")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["version_id"] == version.version_id
+    assert body[0]["sop_mode"] == "balanced"
+
+    branch = client.post(
+        "/api/tasks",
+        json={
+            "requirement": "基于历史版本创建创新分支",
+            "source_version_id": version.version_id,
+        },
+    )
+    assert branch.status_code == 202
+    branch_record = main.store.load(branch.json()["task_id"])
+    assert branch_record.source_version_id == version.version_id
+
+    assert (
+        client.post(
+            "/api/tasks",
+            json={"requirement": "非法分支", "source_version_id": "bad"},
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            "/api/tasks",
+            json={"requirement": "缺失分支", "source_version_id": "abcdef12-v9"},
+        ).status_code
+        == 404
+    )
 
 
 def test_websocket_sends_task_snapshot(client: TestClient) -> None:

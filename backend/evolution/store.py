@@ -79,16 +79,27 @@ class EvolutionStore:
         """把每个基线 YAML 注册为 v1（已有 active.json 则跳过）。"""
         if not self.talents_dir.exists():
             return
-        for name, spec in list_talents(self.talents_dir).items():
+        for name in list_talents(self.talents_dir):
             if self._active_path(name).exists():
                 continue
-            checklist = list(spec.checklist)
+            self._seed_talent(name)
+
+    def _seed_talent(self, name: str) -> None:
+        """为单个 Talent 补齐 v1 快照与 active.json 指针。
+
+        版本库可能被人工清理（例如删除 output/），因此这里不能假设
+        “启动时 seed 过就永远存在”：v1 文件已存在时保留原内容，
+        只补写缺失的 active.json，避免覆盖历史版本。
+        """
+        spec = self.baseline(name)
+        version_path = self._version_path(name, 1)
+        if not version_path.exists():
             version = TalentVersion(
                 talent_name=name,
                 version=1,
                 parent_version=None,
                 prompt=spec.system_prompt,
-                checklist=checklist,
+                checklist=list(spec.checklist),
                 change_reason="基线版本（来自 talents/*.yaml）",
                 evaluation_result=None,
                 status="active",
@@ -96,27 +107,25 @@ class EvolutionStore:
                 output_schema=spec.output_schema,
                 model=spec.model,
             )
-            self._write(
-                self._version_path(name, 1), version.model_dump(mode="json")
-            )
-            self._write(
-                self._active_path(name),
-                {
-                    "talent_name": name,
-                    "active_version": 1,
-                    "updated_at": _now_iso(),
-                    "audit": [
-                        {
-                            "at": _now_iso(),
-                            "action": "seed",
-                            "from_version": None,
-                            "to_version": 1,
-                            "reason": "基线注册",
-                            "proposal_id": None,
-                        }
-                    ],
-                },
-            )
+            self._write(version_path, version.model_dump(mode="json"))
+        self._write(
+            self._active_path(name),
+            {
+                "talent_name": name,
+                "active_version": 1,
+                "updated_at": _now_iso(),
+                "audit": [
+                    {
+                        "at": _now_iso(),
+                        "action": "seed",
+                        "from_version": None,
+                        "to_version": 1,
+                        "reason": "基线注册",
+                        "proposal_id": None,
+                    }
+                ],
+            },
+        )
 
     # ---------- 版本 ----------
 
@@ -138,6 +147,9 @@ class EvolutionStore:
 
     def active_version(self, name: str) -> TalentVersion:
         active_path = self._active_path(name)
+        if not active_path.exists():
+            # 自愈：版本库被清理后按基线重建，避免整个任务因缺指针而失败
+            self.ensure_seeded()
         if not active_path.exists():
             raise VersionNotFoundError(f"{name} 尚未注册任何 Talent 版本")
         active = self._read(active_path)["active_version"]
@@ -248,6 +260,8 @@ class EvolutionStore:
                 raise EvolutionStateError("提案评估未通过，不能启用")
 
         active_path = self._active_path(name)
+        if not active_path.exists():
+            self.ensure_seeded()
         if not active_path.exists():
             raise VersionNotFoundError(f"{name} 尚未注册任何 Talent 版本")
         active = self._read(active_path)
