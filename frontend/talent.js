@@ -39,9 +39,6 @@
 
   const post = (path, body) => {
     const headers = { "Content-Type": "application/json" };
-    const tokenInput = document.getElementById("access-token");
-    const token = tokenInput ? tokenInput.value.trim() : "";
-    if (token) headers["X-OGS-Token"] = token;
     return request(path, {
       method: "POST",
       headers,

@@ -723,8 +723,6 @@ async function submitRequirement(requirement) {
     if (sourceVersion) payload.source_version_id = sourceVersion;
 
     const headers = { "Content-Type": "application/json" };
-    const token = el("access-token") ? el("access-token").value.trim() : "";
-    if (token) headers["X-OGS-Token"] = token;
 
     const response = await fetch("/api/tasks", {
       method: "POST",
@@ -811,9 +809,6 @@ function renderMode(health) {
         "Live 模式未配置完成：需要服务端 LLM_API_KEY、LLM_MODEL 且 MOCK_MODE=false";
     }
   }
-
-  const tokenInput = el("access-token");
-  if (tokenInput) tokenInput.classList.toggle("hidden", mode !== "live");
 
   el("requirement").disabled = readOnly;
   el("submit").disabled = readOnly;
