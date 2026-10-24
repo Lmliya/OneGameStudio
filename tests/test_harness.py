@@ -124,6 +124,9 @@ def test_tool_registry_exposes_exact_role_tools() -> None:
             {"read_requirement", "read_prd", "write_delivery"}
         ),
         "engineer": frozenset({"read_prd", "write_game", "read_review"}),
+        "backup_engineer": frozenset(
+            {"read_prd", "write_game", "read_review"}
+        ),
         "reviewer": frozenset({"read_game", "run_tests", "write_review"}),
         "marketer": frozenset({"read_prd", "read_review", "write_marketing"}),
     }

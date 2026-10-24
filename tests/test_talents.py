@@ -11,9 +11,10 @@ from backend.tools import ROLE_TOOLS
 TALENTS_DIR = Path(__file__).resolve().parents[1] / "talents"
 
 
-def test_load_all_six_talents() -> None:
+def test_load_all_talents() -> None:
     talents = list_talents(TALENTS_DIR)
     assert set(talents) == {
+        "backup_engineer",
         "coo",
         "creative",
         "delivery",
@@ -49,6 +50,7 @@ def test_expected_output_schemas() -> None:
     talents = list_talents(TALENTS_DIR)
     assert talents["coo"].output_schema == "prd"
     assert talents["engineer"].output_schema == "game"
+    assert talents["backup_engineer"].output_schema == "game"
     assert talents["reviewer"].output_schema == "review"
     assert talents["marketer"].output_schema == "marketing"
     assert talents["creative"].output_schema == "creative_proposal"

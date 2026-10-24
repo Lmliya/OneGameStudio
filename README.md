@@ -1,178 +1,140 @@
 # OneGameStudio
 
-轻量级 AI 游戏开发工作室。输入一句自然语言游戏需求，四个 AI 员工（COO / Engineer / Reviewer / Marketer）协作产出可运行的 HTML5 游戏、审查报告与营销文案。
+一个可本地运行的 AI 游戏开发工作室：6 个岗位的 Agent 协作、像素办公室实时状态、
+机械门禁与 AI 审查、不可变游戏版本、Talent 自进化，以及 Demo / Live 双模式。
 
-> 当前进度：**阶段 6（Mini-6 Harness）已完成**。Mock 模式下可完整跑通
-> `COO → Engineer → Reviewer → Engineer → Reviewer → Marketer`，
-> 并在浏览器里实时观看四个 AI 员工工作、直接试玩生成结果。
-> 跨对话交接请看 [docs/HANDOFF.md](docs/HANDOFF.md)。
+![Demo 模式总览](docs/screenshots/demo-overview.png)
 
-## 快速开始
+_上：Demo 模式总览；下：Employee 面板与角色任务记录。_
+
+![Employee 面板](docs/screenshots/employee-detail.png)
+
+## 当前状态
+
+| 项目            | 状态                                                                                     |
+| --------------- | ---------------------------------------------------------------------------------------- |
+| 本地启动        | 可用（uv + FastAPI）                                                                     |
+| npx CLI         | 已提供本地 CLI；**npm 包尚未发布**，`npx onegamestudio` 需发布后才可用                   |
+| GitHub 公开仓库 | 远端 `Lmliya/OneGameStudio` 当前为 **private**；本轮改动未提交、未推送，等待确认后转公开 |
+| 线上部署        | **尚未部署**，无线上地址；配置与步骤已就绪，见 [部署说明](docs/deployment.md)            |
+| 测试            | `uv run pytest -q`，119 passed                                                           |
+
+## 功能
+
+- **6 个岗位**：需求分析（COO）、创意总监、交付总监、工程师、质量审查、营销素材。
+- **工程师双角色**：`Engineer` 与 `Backup Engineer` 共用工程师岗位，同一时间只有一个处于启用状态，可手动切换。
+- **三种 SOP**：FAST / BALANCED / CREATIVE，支持手动与自动选择并记录原因。
+- **Conflict Gate**：创意与交付并行提意见，COO 输出 adopt / simplify / reject 决策。
+- **质量保障**：机械门禁（Playwright）+ AI 审查 + 修复循环 + 预算/并发/超时限制。
+- **游戏版本**：不可变版本、父版本分支、版本切换、最终版本指针。
+- **Talent 自进化**：版本、经验、提案、回归评估、用户批准与回滚；Evolution UI 目前只在 API 层保留。
+- **像素办公室**：6 个工位，状态来自真实事件流，WebSocket 断线自动重连并恢复快照。
+- **Demo / Live**：Demo 回放预验证历史任务，Live 才调用真实模型。
+
+## 本地启动
+
+要求：Python 3.12+、[uv](https://docs.astral.sh/uv/)。
 
 ```bash
 uv sync
-cp .env.example .env        # 默认 MOCK_MODE=true，无需任何 API Key
-uv run uvicorn backend.main:app --reload
+cp .env.example .env        # 默认 Demo + Mock，无需 API Key
+uv run uvicorn backend.main:app --reload --port 8000
 ```
 
-打开 <http://127.0.0.1:8000/>，健康检查：
+打开 http://127.0.0.1:8000/ 。默认 `APP_MODE=demo`、`MOCK_MODE=true`，不会调用真实模型。
+
+### 本地 CLI
 
 ```bash
-curl http://127.0.0.1:8000/api/health
-# {"status":"ok","mock_mode":true}
+node cli/bin.js --check          # 检查环境
+node cli/bin.js                  # Demo 模式，端口 8000
+node cli/bin.js --port 8010 --reload
+node cli/bin.js --live           # Live 模式（需要服务端密钥）
 ```
 
-## 界面
+npm 包名为 `onegamestudio`。**本轮无法访问 npm registry，包名是否可用未经核实，包也未发布**；
+`package.json` 中仍保留 `private: true` 防止误发布。发布前需要用户确认包名并移除该字段。
 
-顶部输入需求点「开始开发」，左边像素办公室里四个员工会依次开工，右边四个标签页实时更新：
+## Demo / Live
 
-| 标签          | 内容                                           |
-| ------------- | ---------------------------------------------- |
-| **Game**      | 隔离 iframe 中直接试玩；可切换修复前的历史版本 |
-| **Review**    | AI 裁决、问题清单、机械门禁 10 项检查表        |
-| **Marketing** | 定位、Slogan、两篇小红书文案、七天推广计划     |
-| **Logs**      | 全量事件流                                     |
+### Demo（默认）
 
-底部事件条滚动显示最近事件。刷新页面会自动恢复当前任务，WebSocket 断线后自动重连（1s → 8s 退避）。所有员工状态都来自后端事件，没有前端伪造的进度动画；同一时刻只有当前员工在动，每段默认至少 6 秒（`STAGE_MIN_SECONDS`）。
+- 只展示 `demo/tasks` 中随仓库提交的历史任务与 `demo/evolution` 快照。
+- 顶部横幅明确标注 **DEMO**，不会调用真实模型。
+- 公开部署设置 `DEMO_READ_ONLY=true` 后，创建任务返回 403。
+- 详见 [docs/demo.md](docs/demo.md)。
 
-## 创建一个任务
+### Live
+
+需要服务端环境变量：
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/tasks \
-  -H 'Content-Type: application/json' \
-  -d '{"requirement": "做一个贪吃蛇游戏"}'
-# 202，返回 task_id 与 status=pending，工作流在后台执行
+APP_MODE=live
+MOCK_MODE=false
+LLM_MODEL=<模型名>
+LLM_API_KEY=<服务端密钥>
+LLM_BASE_URL=https://api.openai.com/v1
+ACCESS_TOKEN=<访问令牌>
 ```
 
-查询进度与产物：
+限制：单 IP 频率、活跃任务上限、单任务预算、并发模型调用上限、请求超时。
+未配置密钥时创建任务返回 503；令牌错误返回 401。密钥不会下发给浏览器，也不写入日志。
 
-```bash
-curl http://127.0.0.1:8000/api/tasks/<task_id>
-curl http://127.0.0.1:8000/api/tasks/<task_id>/artifacts
-curl http://127.0.0.1:8000/api/tasks/<task_id>/history
-curl -X POST http://127.0.0.1:8000/api/tasks/<task_id>/cancel
-```
+## 安全
 
-实时事件走 WebSocket（连上立即收到 `task.snapshot` 快照）：
+- API Key 只从服务端环境变量读取，`.env` 已被 `.gitignore` 排除。
+- 生成的游戏 HTML 在带 `sandbox` 与严格 CSP 的 iframe 中预览，禁止外部资源与表单提交。
+- 产物接口只允许白名单文件名，任务 ID 必须是十六进制，防止路径穿越。
+- Demo 只读默认关闭创建入口；Live 必须携带 `X-OGS-Token`（当 `ACCESS_TOKEN` 非空时）。
+- Talent 的工具白名单、质量门禁、预算上限等受保护字段不能被自进化提案修改。
 
-```bash
-websocat ws://127.0.0.1:8000/ws/tasks/<task_id>
-```
-
-游戏预览（只允许 `index.html` 与 `history/index.v{n}.html`）：
+## 架构
 
 ```
-http://127.0.0.1:8000/preview/<task_id>/index.html
+frontend/            像素办公室 + 驾驶舱（原生 HTML/CSS/JS）
+backend/main.py      FastAPI：任务、版本、产物、预览、WebSocket、模式控制
+backend/workflow/    SOP、冲突阶段、修复循环、版本与指标
+backend/core/vessel.py  Talent 执行、预算、限并发、重试、契约校验
+backend/evolution/   Talent 版本、经验、提案、回归评估与职位启用
+talents/*.yaml       6 个在岗 Talent + Backup Engineer
+demo/tasks           预验证历史任务（Demo 只读）
+demo/evolution       Demo 的 Talent 记录快照
+tests/               119 个测试
 ```
 
-产物位置：
+详见 [docs/architecture.md](docs/architecture.md) 与 [docs/HANDOFF.md](docs/HANDOFF.md)。
 
-```
-output/{task_id}/
-    prd.md
-    index.html
-    gate.json
-    review.json
-    marketing_kit.json
-    marketing_kit.md
-    task.json
-    history/index.v1.html
-    history/gate.v1.json
-```
-
-## 质量审查
-
-生成的游戏必须通过两层审查才会交付：
-
-1. **机械门禁**：Playwright 在隔离浏览器中真实加载页面，检查页面加载、未处理 JS 错误、游戏区域、方向键、计分、结束后重开，默认阻断一切外部网络请求。
-2. **AI Reviewer**：读取 PRD、门禁报告与游戏代码，输出 `PASS / ITERATE`。
-
-门禁失败时，AI 给出的 PASS 会被强制改为 ITERATE；修复最多 2 次，每次修复前把旧版本存入 `history/`。
-
-```bash
-uv run playwright install chromium   # 可选；失败时自动回退到系统 Chrome
-```
-
-产物目录同时包含 `gate.json`（最新门禁报告）与 `review.json`（最终裁决）。
-
-## 营销素材
-
-审查通过后 Marketer 会产出两份文件：
-
-- `marketing_kit.json`：游戏定位、Slogan、两篇小红书文案、七天推广计划，供前端渲染
-- `marketing_kit.md`：同一内容的人读版
-
-只能宣传机械门禁已验证的功能；一旦检测到编造的「用户数 / 下载量」等表述，营销阶段失败，但已通过审查的游戏文件会保留。
-
-## 运行测试
+## 测试
 
 ```bash
 uv run pytest -q
+node --check frontend/app.js
+node cli/bin.js --check
 ```
 
-## 工作流
+## 部署
 
-```
-pending → planning(COO) → coding(Engineer) → reviewing(Reviewer)
-        → [fixing(Engineer) → reviewing] × 最多 2 次
-        → marketing(Marketer) → completed
-```
+推荐 Render（Docker + 持久化 Disk）。仓库已包含 `Dockerfile`、`render.yaml`。
+线上部署的平台对比、持久化、WebSocket、Playwright、费用与验收步骤见
+[docs/deployment.md](docs/deployment.md)。
 
-未通过且修复次数用尽 → `needs_attention`；任一阶段异常 → `failed`；用户主动取消 → `cancelled`。三种终态都会保留已产出文件。
+## 仓库发布清单
 
-状态由 Python 状态机推进，模型无权修改。工具权限由 `backend/tools.py` 显式注册并在运行时校验，模型输出不可能变成 shell 命令。
+- [x] `README.md`
+- [x] `LICENSE`（MIT）
+- [x] `.gitignore`（排除 `.env`、`output/`、虚拟环境）
+- [x] `.env.example`
+- [x] `demo/` 示例数据
+- [x] 测试与截图
+- [ ] GitHub 仓库转为 public 并推送（远端当前为 private，等待用户确认）
+- [ ] npm 包名确认与发布（等待用户确认）
 
-运行保障机制（六项 Harness）见 [docs/harness.md](docs/harness.md)。
+## 第三方与素材
 
-## 配置项
+- Python / JavaScript 依赖均为开源许可，具体许可见各自发行包。
+- 演示游戏由 Mock 供应商生成，单文件 HTML，不使用外部 CDN、图片、字体或音效素材。
+- 仓库不包含参考项目的代码或素材；如后续引入，必须先确认许可证并在此登记。
 
-| 变量                      | 说明                                             |
-| ------------------------- | ------------------------------------------------ |
-| `MOCK_MODE`               | `true` 时使用 MockProvider，不联网不花钱         |
-| `LLM_BASE_URL`            | OpenAI 兼容接口地址                              |
-| `LLM_API_KEY`             | 服务端密钥，仅在真实模式需要                     |
-| `LLM_MODEL`               | 全局默认模型，可被 Talent 的 `model` 覆盖        |
-| `REQUEST_TIMEOUT_SECONDS` | 单次调用超时                                     |
-| `STAGE_MIN_SECONDS`       | 每个员工的阶段最少展示时长（默认 6 秒，0 关闭）  |
-| `PROVIDER_MAX_RETRIES`    | provider 调用异常重试次数（超时不重试）          |
-| `BUDGET_USD`              | 单任务预算上限（按配置单价估算）                 |
-| `BUDGET_SOFT_RATIO`       | 预算使用比例达到该值后降级到轻量模型（默认 0.7） |
-| `LIGHT_MODEL`             | 轻量模型名，留空表示不降级                       |
-| `MAX_OUTPUT_TOKENS`       | 单次调用最大输出 token 数                        |
-| `MODEL_PRICES`            | 模型单价 JSON；留空则费用标记为 unknown          |
-| `MAX_CONCURRENT_CALLS`    | 并发模型调用上限（默认 1，防止预算超额）         |
+## License
 
-模型名与密钥不出现在业务代码中；`MODEL_PRICES` 的估算值不是供应商账单。
-
-## 目录结构
-
-```
-backend/
-    main.py           FastAPI 入口（API / WebSocket / 隔离预览）
-    bus.py            进程内事件总线
-    config.py         全局配置
-    schemas.py        输出契约
-    talents.py        Talent 加载与校验
-    tools.py          工具注册表与权限校验
-    budget.py         单任务预算守卫
-    store.py          任务持久化
-    models/           TaskRecord / TalentSpec / TraceEvent
-    core/vessel.py    员工执行容器
-    providers/        base / mock / openai
-    gate/             机械门禁（Playwright）
-    workflow/         状态机与编排引擎
-frontend/             index.html / style.css / office.js / app.js
-talents/              四个员工的 YAML
-tests/                pytest
-docs/                 architecture.md / harness.md / progress.md
-output/               任务产物（不入库）
-```
-
-详细设计见 [docs/architecture.md](docs/architecture.md)，交接说明见 [docs/HANDOFF.md](docs/HANDOFF.md)。
-
-## 设计约束
-
-- 工作流状态由 Python 代码推进，模型无权修改。
-- Reviewer 只审查不改代码，Marketer 只写营销不改游戏。
-- 生成的游戏代码视为不可信内容，只在独立目录落盘，不在服务进程内执行。
-- 第一版不引入 LangChain / LangGraph / React / Vue / Redis / PostgreSQL / Docker。
+MIT，见 [LICENSE](LICENSE)。

@@ -1,12 +1,103 @@
 # 开发进度
 
-## 交接状态（2026-10-24，阶段 9 完成后）
+## 交接状态（2026-10-24，阶段 10 完成后）
 
-- 分支 `main`，最新提交 `73dd5a2 完成了自动进化的`；阶段 9 后端主体已在该提交中，前端、引擎补丁、测试与文档仍有未提交改动。
-- 未提交修改：`backend/workflow/engine.py`（并行墙钟指标补丁）、`frontend/`（六人办公室、SOP 选择器、Studio 面板）、`talents/coo.yaml`、测试与文档；其余阶段 9 后端代码已包含在最新提交中。
-- 测试：`uv run pytest -q` → **109 passed in 61.14s**。
+- 分支 `main`，最新提交 `73dd5a2`；阶段 9 与阶段 10 的改动均未提交。
+- 测试：`uv run pytest -q` → **119 passed**。
 - 交接文档：[HANDOFF.md](HANDOFF.md)。
 - 阶段 9 说明：[conflict-protocol.md](conflict-protocol.md)、[fast-sop.md](fast-sop.md)。
+- 阶段 10 部署与 Demo 说明：[deployment.md](deployment.md)、[demo.md](demo.md)。
+
+---
+
+## 阶段 10：一键启动与线上部署（已完成代码与文档，未实际部署）
+
+**日期**：2026-10-24
+
+目标：提供本地启动与本地 CLI，整理公开仓库文件，准备线上部署，并实现安全的 Demo / Live 双模式。
+
+### 已实现
+
+- **Demo / Live**：`APP_MODE` 控制模式；Demo 读取 `demo/tasks` 预验证任务并通过 WebSocket 回放历史事件，页面横幅明确标记，`DEMO_READ_ONLY=true` 时禁止新建任务。
+- **Live 安全**：必须 `MOCK_MODE=false` + `LLM_MODEL` + 服务端 `LLM_API_KEY`，否则 503；`ACCESS_TOKEN` 非空时创建任务必须携带 `X-OGS-Token`，否则 401；新增单 IP 频率限制与活跃任务上限。
+- **Demo 数据**：复制已验证任务 `adc5c4474a83` 与 Talent 快照到 `demo/`，共 25 个文件、124KB。
+- **本地 CLI**：`cli/bin.js` 支持 `--check`、`--demo/--live`、`--port/--host/--reload/--no-open`，自动创建 `.env` 并打开浏览器。
+- **公开仓库文件**：重写 `README.md`，新增 MIT `LICENSE`、`package.json`、`.dockerignore`、`Dockerfile`、`render.yaml`；`.env.example` 增加模式与安全配置。
+- **部署方案**：Render Docker + `/data` 持久化磁盘；说明 WebSocket、Chromium、休眠、费用、CORS 与验收清单（详见 `docs/deployment.md`）。
+
+### 新增 / 修改文件
+
+```
+新建  cli/bin.js                   本地启动 CLI
+新建  package.json                 npm 包 onegamestudio（private，未发布）
+新建  Dockerfile / .dockerignore   Render/Fly 可用镜像
+新建  render.yaml                  Render Blueprint（持久化磁盘）
+新建  demo/tasks/                  预验证历史任务
+新建  demo/evolution/              Talent 快照
+新建  docs/deployment.md           部署方案与验收
+新建  docs/demo.md                 Demo 使用说明
+新建  tests/test_modes.py          Demo/Live 安全测试
+修改  backend/config.py            APP_MODE / 限流 / 并发 / 回放配置
+修改  backend/main.py              模式控制、Demo 回放、任务解析、限流
+修改  backend/evolution/api.py     任务统计支持多个 TaskStore
+修改  frontend/index.html          模式横幅、Live 令牌输入
+修改  frontend/app.js              模式启动、Demo 自动加载、令牌请求头
+修改  README.md / LICENSE / .env.example
+```
+
+### 测试
+
+`uv run pytest -q` → **119 passed**；新增 `tests/test_modes.py` 6 个用例，覆盖只读拦截、Live 缺密钥、令牌校验、进化写接口鉴权、健康接口与 Demo 历史任务读取。
+
+### 未验证项与边界
+
+- **未实际部署**，也没有线上地址；需要用户提供 GitHub / Render / 模型服务凭据。
+- **npm 包未发布**，包名 `onegamestudio` 的可用性未核实（本轮无法访问 npm registry）；`npx onegamestudio` 目前不可用，本地用 `node cli/bin.js` 验证。
+- 未推送 GitHub 仓库；未验证真实 Live 模型端到端调用。
+- 进程内限流只在单实例有效；多实例需要共享限流。
+- 岗位「启用角色」仍只影响展示与岗位选择，实际任务执行仍固定使用 `engineer`；自动接管属于后续工作。
+
+---
+
+## 阶段 9 补充：Employee 面板与备用工程师（已完成）
+
+**日期**：2026-10-24
+
+目标：把右侧第 5 个标签从 Talent 改为 Employee，每个员工选项下显示已完成任务数量与任务名称；并为工程师岗位新增一名备用员工。
+
+### 已实现
+
+- **新增 `talents/backup_engineer.yaml`**：备用工程师，与 Engineer 使用相同的工具权限（`read_prd` / `write_game` / `read_review`）与 `game` 输出契约，验收时同样通过机械门禁与 AI 审查。
+- **按真实数据统计**：`GET /api/talents` 增加 `completed_count` 与 `completed_tasks`；归属依据是 `task.json` 的 `talent_versions` 键，且只统计 `status == completed` 的任务，未参与或未完成的任务不计入。
+- **`TaskStore.list_records()`**：扫描全部任务目录读取记录，按 `updated_at` 倒序；损坏的 `task.json` 被跳过，不影响列表。
+- **前端**：标签文案改为 Employee（`data-tab="employee"`），按 **6 个职位** 分组展示，每个职位下列出对应角色；目前只有「工程师」职位拥有 `engineer` / `backup_engineer` 两个角色。每个角色下方显示「已完成 N 个任务」与任务名称；补上原先缺失的列表点击加载详情。
+- **岗位级唯一启用角色**：新增 `output/evolution/positions/{position}.json` 保存 `active_talent`；同一岗位同一时间只有一个角色处于「启用中」，其余显示「备用」。`POST /api/positions/{position}/switch` 支持手动切换，后端校验角色必须属于该岗位。
+- **详情页简化**：Employee 详情只保留姓名/角色、启用状态、职位、版本、完成任务数量和「完成过的任务」列表（任务 ID + 任务名称）。原先的提示词、检查清单、版本历史、经验库、进化提案与审计不再占用详情页；相关接口仍保留在 `/api/talents/*`，本次未删除后端能力。
+- **两种「启用」语义区分**：Talent 版本状态（`active.json`）表示某 Talent 的哪个版本被启用；岗位启用状态表示当前由哪个角色担任该职位。Employee 列表与详情展示岗位状态。
+- **回归用例**：`backup_engineer` 拥有与 `engineer` 相同的固定回归集，`diagnose` 可直接使用。
+
+### 新增 / 修改文件
+
+```
+新建  talents/backup_engineer.yaml      备用工程师（唯一备用员工）
+修改  backend/store.py                  list_records()
+修改  backend/evolution/api.py          /api/talents 任务统计 + /api/employees 职位聚合
+修改  backend/tools.py                  backup_engineer 工具授权
+修改  backend/evolution/regression.py   backup_engineer 回归用例
+修改  frontend/index.html               Employee 标签与说明
+修改  frontend/talent.js                6 个职位分组 + 角色任务统计 + 列表点击
+修改  frontend/style.css                .t-stats / .t-tasks
+修改  tests/                            Talent 集合 6 → 7，新增统计测试
+```
+
+### 测试
+
+`uv run pytest -q` → **113 passed**。新增用例 `test_api_talents_reports_completed_tasks` 验证只统计已完成且真实参与的任务；`test_api_employees_groups_roles_by_position` 验证固定 6 个职位、仅工程师职位有两个角色且每岗位只有一个启用角色；`test_api_switch_position_talent` 验证切换持久化与非法切换拒绝。
+
+### 边界
+
+- 本次只做展示、统计与岗位级启用选择，**暂不改变实际执行角色**：Run 仍由 `engineer` 执行。让选中的角色真正接管任务（自动接管、候选隔离、HandoffPackage）仍属于阶段 10，尚未实现。
+- 备用工程师目前为 0 个任务，这是真实数据。
 
 ---
 

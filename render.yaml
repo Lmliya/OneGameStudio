@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: onegamestudio-demo
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_MODE
+        value: demo
+      - key: DEMO_READ_ONLY
+        value: "true"
+      - key: MOCK_MODE
+        value: "true"
+      - key: OUTPUT_DIR
+        value: /data/output
+      - key: EVOLUTION_DIR
+        value: /data/evolution
+      - key: DEMO_DIR
+        value: /app/demo/tasks
+      # Live 模式才需要；在 Render 控制台手动填写，不要写进仓库
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        sync: false
+      - key: ACCESS_TOKEN
+        sync: false
+    disk:
+      name: ogs-data
+      mountPath: /data
+      sizeGB: 1

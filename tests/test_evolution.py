@@ -54,6 +54,7 @@ def _approved_reviewer(service: EvolutionService):
 def test_seed_registers_v1_for_all_talents(evo) -> None:
     store, _ = evo
     assert store.talent_names() == [
+        "backup_engineer",
         "coo",
         "creative",
         "delivery",
@@ -350,6 +351,7 @@ def test_api_full_evolution_flow(api) -> None:
     client, store, _ = api
     talents = client.get("/api/talents").json()
     assert {item["talent_name"] for item in talents} == {
+        "backup_engineer",
         "coo",
         "creative",
         "delivery",
@@ -390,6 +392,103 @@ def test_api_full_evolution_flow(api) -> None:
     assert rolled.status_code == 200
     assert rolled.json()["active_version"]["version"] == 1
     assert store.active_version("reviewer").version == 1
+
+
+def test_api_talents_reports_completed_tasks(api) -> None:
+    """Employee 列表只统计真实参与且已完成的任务。"""
+    client, _, task_store = api
+
+    done = task_store.create("做一个会计分的贪吃蛇")
+    done.status = TaskStatus.COMPLETED
+    done.talent_versions = {"coo": "coo@v1", "engineer": "engineer@v1"}
+    done.final_version_id = "abc123-v1"
+    task_store.save(done)
+
+    running = task_store.create("再来一个跑酷游戏")
+    running.talent_versions = {"coo": "coo@v1"}
+    task_store.save(running)
+
+    items = {
+        item["talent_name"]: item for item in client.get("/api/talents").json()
+    }
+    assert items["engineer"]["completed_count"] == 1
+    assert items["engineer"]["completed_tasks"] == [
+        {
+            "task_id": done.task_id,
+            "name": "做一个会计分的贪吃蛇",
+            "final_version_id": "abc123-v1",
+        }
+    ]
+    assert items["coo"]["completed_count"] == 1
+    assert items["marketer"]["completed_count"] == 0
+    assert items["backup_engineer"]["completed_count"] == 0
+    assert items["backup_engineer"]["completed_tasks"] == []
+
+
+def test_api_employees_groups_roles_by_position(api) -> None:
+    """Employee 面板固定 6 个岗位，目前仅工程师岗位有两个角色。"""
+    client, _, _ = api
+    positions = client.get("/api/employees").json()
+    assert [item["position"] for item in positions] == [
+        "coo",
+        "creative",
+        "delivery",
+        "engineer",
+        "reviewer",
+        "marketer",
+    ]
+    engineer = next(item for item in positions if item["position"] == "engineer")
+    assert [role["talent_name"] for role in engineer["roles"]] == [
+        "engineer",
+        "backup_engineer",
+    ]
+    assert all(
+        len(item["roles"]) == 1
+        for item in positions
+        if item["position"] != "engineer"
+    )
+    assert all(
+        "completed_count" in role
+        for item in positions
+        for role in item["roles"]
+    )
+    # 同一岗位同一时间只能有一个启用角色
+    assert all(
+        sum(1 for role in item["roles"] if role["is_active_for_position"]) == 1
+        for item in positions
+    )
+    assert engineer["active_talent"] == "engineer"
+
+
+def test_api_switch_position_talent(api) -> None:
+    client, _, _ = api
+    response = client.post(
+        "/api/positions/engineer/switch",
+        json={"talent_name": "backup_engineer"},
+    )
+    assert response.status_code == 200
+    assert response.json()["active_talent"] == "backup_engineer"
+
+    positions = client.get("/api/employees").json()
+    engineer = next(item for item in positions if item["position"] == "engineer")
+    assert engineer["active_talent"] == "backup_engineer"
+    assert [role["is_active_for_position"] for role in engineer["roles"]] == [
+        False,
+        True,
+    ]
+
+    # 不能切到不属于该岗位的角色
+    invalid = client.post(
+        "/api/positions/engineer/switch",
+        json={"talent_name": "marketer"},
+    )
+    assert invalid.status_code == 409
+
+    missing = client.post(
+        "/api/positions/unknown/switch",
+        json={"talent_name": "engineer"},
+    )
+    assert missing.status_code == 404
 
 
 def test_api_lessons_from_task(api) -> None:

@@ -148,6 +148,36 @@ CASES: dict[str, tuple[RegressionCase, ...]] = {
             coverage_groups=(("js",), ("报错", "异常", "错误")),
         ),
     ),
+    "backup_engineer": (
+        RegressionCase(
+            "game_normal",
+            "正常游戏：单文件可运行",
+            expect_issue=False,
+            improvement="",
+            overreach_groups=(("一律重写",),),
+        ),
+        RegressionCase(
+            "no_restart",
+            "缺少重新开始入口",
+            expect_issue=True,
+            improvement="实现清单新增：必须提供重新开始入口并重置分数与状态。",
+            coverage_groups=(("重新开始", "重开", "restart"),),
+        ),
+        RegressionCase(
+            "no_score",
+            "计分未实现或未刷新",
+            expect_issue=True,
+            improvement="实现清单新增：得分变化必须同步刷新界面。",
+            coverage_groups=(("计分", "得分", "score"),),
+        ),
+        RegressionCase(
+            "js_error",
+            "存在未处理 JS 异常",
+            expect_issue=True,
+            improvement="实现清单新增：提交前自检控制台无未捕获异常。",
+            coverage_groups=(("js",), ("报错", "异常", "错误")),
+        ),
+    ),
     "marketer": (
         RegressionCase(
             "kit_normal",

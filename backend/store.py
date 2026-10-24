@@ -210,6 +210,23 @@ class TaskStore:
             return None
         return path.read_text(encoding="utf-8")
 
+    def list_records(self) -> list[TaskRecord]:
+        """读取全部任务记录，按最近更新时间倒序；损坏的任务目录会被跳过。"""
+        if not self.root.exists():
+            return []
+        records: list[TaskRecord] = []
+        for directory in sorted(self.root.iterdir()):
+            if not directory.is_dir() or directory.is_symlink():
+                continue
+            if not (directory / TASK_FILE).is_file():
+                continue
+            try:
+                records.append(self.load(directory.name))
+            except Exception:
+                # 损坏的 task.json 不参与统计，避免拖垮整个列表
+                continue
+        return sorted(records, key=lambda item: item.updated_at, reverse=True)
+
     def find_active_by_requirement(self, requirement: str) -> TaskRecord | None:
         """查找同需求且仍在运行的任务，用于拒绝重复提交。"""
         if not self.root.exists():

@@ -50,38 +50,42 @@ Realtime = EventBus（进程内）+ WebSocket
 
 ### 2.3 模块地图
 
-| 路径                                | 职责                                                                                              |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `backend/main.py`                   | FastAPI 入口：任务 API、取消、产物读取、WebSocket、隔离预览、静态托管                             |
-| `backend/config.py`                 | 全局 `Settings`，环境变量映射                                                                     |
-| `backend/models/contract.py`        | `TaskStatus`（10 态）、`TERMINAL_STATUSES`、`TaskRecord`（含 SOP/版本/指标）、`TaskCreateRequest` |
-| `backend/models/events.py`          | `EventType`、`AgentStatus`、`TokenUsage`、`TraceEvent`、`Tracer`                                  |
-| `backend/models/sop.py`             | `SOPMode`、`ConflictDecision`、`RunMetrics`                                                       |
-| `backend/models/version.py`         | 不可变 `GameVersion`                                                                              |
-| `backend/models/talent.py`          | `TalentSpec`（id/name/role/system_prompt/model/allowed_tools/output_schema）                      |
-| `backend/schemas.py`                | 六个输出契约 + 门禁报告契约 + `OUTPUT_SCHEMAS` 注册表                                             |
-| `backend/talents.py`                | 加载并校验 `talents/*.yaml`（工具、schema、角色授权）                                             |
-| `backend/tools.py`                  | Harness 2：12 个工具显式注册表、`ROLE_TOOLS`、加载期与运行时双重校验                              |
-| `backend/budget.py`                 | Harness 5：`TaskBudget`、`BudgetGuard`、价格表解析                                                |
-| `backend/evolution/`                | 阶段 8：Talent 版本库、经验库、提案、固定回归评估、审批/回滚 API                                  |
-| `backend/core/vessel.py`            | 员工执行容器：预算检查、限并发、有限重试、契约校验、输出上限、调用轨迹                            |
-| `backend/providers/base.py`         | `BaseProvider` / `ProviderResponse` / `usage_source`                                              |
-| `backend/providers/mock.py`         | 离线确定性 Mock（游戏 HTML、审查、顾问意见与裁决）                                                |
-| `backend/providers/openai.py`       | OpenAI 兼容真实调用，支持 `max_tokens`                                                            |
-| `backend/gate/mechanical.py`        | Harness 3：Playwright 机械门禁与 PRD 验收映射                                                     |
-| `backend/workflow/state_machine.py` | `ALLOWED_TRANSITIONS` + `assert_transition`（含 FAST 直达完成）                                   |
-| `backend/workflow/sop.py`           | SOP 自动选择与原因                                                                                |
-| `backend/workflow/engine.py`        | 编排：SOP / 冲突阶段 / 修复循环 / 取消 / 版本 / 指标 / 事件落盘与广播                             |
-| `backend/store.py`                  | 任务持久化：`output/{task_id}/`、快照、不可变版本、分支复制、原子写                               |
-| `backend/bus.py`                    | 进程内 `EventBus`，每任务 `asyncio.Queue(256)`，满则丢最旧                                        |
-| `backend/marketing.py`              | 营销 Markdown 渲染 + 编造数据正则拦截                                                             |
-| `frontend/index.html`               | 驾驶舱骨架（顶部 / 左办公室 / 右六标签 / 底部事件条）                                             |
-| `frontend/style.css`                | 像素风：硬边框、阶梯阴影、无圆角、响应式单列                                                      |
-| `frontend/office.js`                | Canvas 2D 像素办公室，6 员工动画与观点气泡由事件驱动                                              |
-| `frontend/app.js`                   | WebSocket、快照恢复、SOP 选择、Studio 面板、产物渲染、版本切换、隔离预览                          |
-| `frontend/talent.js`                | Talent 面板：版本、经验、提案、评估、批准与回滚                                                   |
-| `talents/*.yaml`                    | COO / Creative / Delivery / Engineer / Reviewer / Marketer 六份配置                               |
-| `tests/*.py`                        | 10 个测试文件，109 个用例                                                                         |
+| 路径                                | 职责                                                                                               |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `backend/main.py`                   | FastAPI 入口：任务 API、取消、产物读取、WebSocket、隔离预览、静态托管                              |
+| `backend/config.py`                 | 全局 `Settings`，环境变量映射                                                                      |
+| `backend/models/contract.py`        | `TaskStatus`（10 态）、`TERMINAL_STATUSES`、`TaskRecord`（含 SOP/版本/指标）、`TaskCreateRequest`  |
+| `backend/models/events.py`          | `EventType`、`AgentStatus`、`TokenUsage`、`TraceEvent`、`Tracer`                                   |
+| `backend/models/sop.py`             | `SOPMode`、`ConflictDecision`、`RunMetrics`                                                        |
+| `backend/models/version.py`         | 不可变 `GameVersion`                                                                               |
+| `backend/models/talent.py`          | `TalentSpec`（id/name/role/system_prompt/model/allowed_tools/output_schema）                       |
+| `backend/schemas.py`                | 六个输出契约 + 门禁报告契约 + `OUTPUT_SCHEMAS` 注册表                                              |
+| `backend/talents.py`                | 加载并校验 `talents/*.yaml`（工具、schema、角色授权）                                              |
+| `backend/tools.py`                  | Harness 2：12 个工具显式注册表、`ROLE_TOOLS`、加载期与运行时双重校验                               |
+| `backend/budget.py`                 | Harness 5：`TaskBudget`、`BudgetGuard`、价格表解析                                                 |
+| `backend/evolution/`                | 阶段 8：Talent 版本库、经验库、提案、固定回归评估、审批/回滚 API                                   |
+| `backend/core/vessel.py`            | 员工执行容器：预算检查、限并发、有限重试、契约校验、输出上限、调用轨迹                             |
+| `backend/providers/base.py`         | `BaseProvider` / `ProviderResponse` / `usage_source`                                               |
+| `backend/providers/mock.py`         | 离线确定性 Mock（游戏 HTML、审查、顾问意见与裁决）                                                 |
+| `backend/providers/openai.py`       | OpenAI 兼容真实调用，支持 `max_tokens`                                                             |
+| `backend/gate/mechanical.py`        | Harness 3：Playwright 机械门禁与 PRD 验收映射                                                      |
+| `backend/workflow/state_machine.py` | `ALLOWED_TRANSITIONS` + `assert_transition`（含 FAST 直达完成）                                    |
+| `backend/workflow/sop.py`           | SOP 自动选择与原因                                                                                 |
+| `backend/workflow/engine.py`        | 编排：SOP / 冲突阶段 / 修复循环 / 取消 / 版本 / 指标 / 事件落盘与广播                              |
+| `backend/store.py`                  | 任务持久化：`output/{task_id}/`、快照、不可变版本、分支复制、原子写                                |
+| `backend/bus.py`                    | 进程内 `EventBus`，每任务 `asyncio.Queue(256)`，满则丢最旧                                         |
+| `backend/marketing.py`              | 营销 Markdown 渲染 + 编造数据正则拦截                                                              |
+| `frontend/index.html`               | 驾驶舱骨架（顶部 / 左办公室 / 右六标签 / 底部事件条）                                              |
+| `frontend/style.css`                | 像素风：硬边框、阶梯阴影、无圆角、响应式单列                                                       |
+| `frontend/office.js`                | Canvas 2D 像素办公室，6 员工动画与观点气泡由事件驱动                                               |
+| `frontend/app.js`                   | WebSocket、快照恢复、SOP 选择、Studio 面板、产物渲染、版本切换、隔离预览                           |
+| `frontend/talent.js`                | Employee 面板：6 个职位/角色、岗位启用切换、角色基础信息与已完成任务（任务 ID + 名称）             |
+| `talents/*.yaml`                    | COO / Creative / Delivery / Engineer / Reviewer / Marketer 六份在岗配置 + Backup Engineer 备用配置 |
+| `cli/bin.js`                        | 本地启动 CLI：环境检查、Demo/Live 模式、端口与浏览器打开                                           |
+| `package.json`                      | npm 包 `onegamestudio`（`private: true`，尚未发布）                                                |
+| `Dockerfile` / `render.yaml`        | Python 3.12 + uv + Chromium；Render 部署含 `/data` 持久化磁盘                                      |
+| `demo/`                             | 预验证历史任务与 Talent 快照，Demo 模式只读                                                        |
+| `tests/*.py`                        | 11 个测试文件，119 个用例                                                                          |
 
 ### 2.4 数据流
 
@@ -134,18 +138,19 @@ WorkflowEngine.start()
 | 8    | AI 员工自进化（版本/经验/提案/评估/审批/回滚） | `tests/test_evolution.py`、`docs/talent-evolution.md`                                          |
 | 9    | 双角色冲突协作、三种 SOP、不可变版本与分支     | `tests/test_sop.py`、`tests/test_versions.py`、`docs/conflict-protocol.md`、`docs/fast-sop.md` |
 
-### 3.1 六名 AI 员工
+### 3.1 AI 员工（六名在岗 + 一名备用）
 
-| 员工              | Talent 文件             | 角色     | 工具（授权表来源 `backend/tools.py`）                         | 输出契约                                     |
-| ----------------- | ----------------------- | -------- | ------------------------------------------------------------- | -------------------------------------------- |
-| COO               | `talents/coo.yaml`      | 需求分析 | `read_requirement`、`write_prd`、`write_decision`             | `prd` → `GamePRD`（含冲突裁决）              |
-| Creative Director | `talents/creative.yaml` | 创意总监 | `read_requirement`、`read_prd`、`read_game`、`write_creative` | `creative_proposal` → `CreativeProposal`     |
-| Delivery Director | `talents/delivery.yaml` | 交付总监 | `read_requirement`、`read_prd`、`write_delivery`              | `delivery_assessment` → `DeliveryAssessment` |
-| Engineer          | `talents/engineer.yaml` | 游戏开发 | `read_prd`、`write_game`、`read_review`                       | `game` → `GameArtifact`                      |
-| Reviewer          | `talents/reviewer.yaml` | 质量审查 | `read_game`、`run_tests`、`write_review`                      | `review` → `ReviewReport`                    |
-| Marketer          | `talents/marketer.yaml` | 营销素材 | `read_prd`、`read_review`、`write_marketing`                  | `marketing` → `MarketingKit`                 |
+| 员工              | Talent 文件                    | 角色       | 工具（授权表来源 `backend/tools.py`）                         | 输出契约                                     |
+| ----------------- | ------------------------------ | ---------- | ------------------------------------------------------------- | -------------------------------------------- |
+| COO               | `talents/coo.yaml`             | 需求分析   | `read_requirement`、`write_prd`、`write_decision`             | `prd` → `GamePRD`（含冲突裁决）              |
+| Creative Director | `talents/creative.yaml`        | 创意总监   | `read_requirement`、`read_prd`、`read_game`、`write_creative` | `creative_proposal` → `CreativeProposal`     |
+| Delivery Director | `talents/delivery.yaml`        | 交付总监   | `read_requirement`、`read_prd`、`write_delivery`              | `delivery_assessment` → `DeliveryAssessment` |
+| Engineer          | `talents/engineer.yaml`        | 游戏开发   | `read_prd`、`write_game`、`read_review`                       | `game` → `GameArtifact`                      |
+| Backup Engineer   | `talents/backup_engineer.yaml` | 备用工程师 | `read_prd`、`write_game`、`read_review`                       | `game` → `GameArtifact`                      |
+| Reviewer          | `talents/reviewer.yaml`        | 质量审查   | `read_game`、`run_tests`、`write_review`                      | `review` → `ReviewReport`                    |
+| Marketer          | `talents/marketer.yaml`        | 营销素材   | `read_prd`、`read_review`、`write_marketing`                  | `marketing` → `MarketingKit`                 |
 
-- 员工数量：**6 人**。
+- 员工数量：**6 名在岗 + 1 名备用（Backup Engineer）**；备用工程师与 Engineer 共用工程师岗位，不占像素办公室工位，也不改变当前 Run 的执行角色。
 - Talent 的 `model` 目前全为 `null`，即统一使用 `LLM_MODEL`（Mock 模式下为 `mock`）。
 - 工具在加载期（`talents.py`）与运行时（`engine._use_tool`）各校验一次；注册表拒绝 `shell/exec/subprocess/system/eval` 前缀的工具名。
 - 两名总监复用同一 Vessel 执行器，支持独立提示词、结构化输出、工具权限、模型配置、Token 统计、Talent 版本化与后续自进化。
@@ -242,9 +247,19 @@ FAST：reviewing（PASS）→ completed（跳过 marketing）
 - **指标**：`TaskRecord.metrics` 记录 `elapsed_ms / model_calls / parallel_wall_ms`。
 - **前端**：SOP 下拉、来源版本输入、Studio 标签、六人观点气泡；Mock 模式明确标注。
 
+#### 3.11 Demo / Live 双模式与启动（阶段 10）
+
+- `APP_MODE=demo`（默认）：读取 `demo/tasks` 的预验证历史任务；页面顶部横幅明确标记 DEMO；
+  WebSocket 先发空事件快照，再按 `DEMO_REPLAY_MS` 回放历史事件；`DEMO_READ_ONLY=true` 时创建任务返回 403。
+- `APP_MODE=live`：必须 `MOCK_MODE=false`、`LLM_MODEL`、服务端 `LLM_API_KEY` 同时存在，否则返回 503；
+  `ACCESS_TOKEN` 非空时创建任务必须携带 `X-OGS-Token`，否则 401。
+- 资源限制：单 IP 每分钟任务数、活跃任务上限、单任务预算、并发模型调用上限、请求超时。
+- `cli/bin.js`：本地启动、`--check`、`--demo/--live`、端口与自动打开浏览器；npm 包未发布。
+- 部署：`Dockerfile` + `render.yaml`，持久化 `/data`；说明见 `docs/deployment.md`。
+
 ### 3.10 配置项（真实存在）
 
-见 [.env.example](file:///Users/lmliyascarlet/Desktop/项目/OneManCompany/OneGameStudio/.env.example)：`MOCK_MODE`、`LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`、`REQUEST_TIMEOUT_SECONDS`、`STAGE_MIN_SECONDS`、`PROVIDER_MAX_RETRIES`、`PROVIDER_RETRY_BACKOFF_SECONDS`、`BUDGET_USD`、`BUDGET_SOFT_RATIO`、`LIGHT_MODEL`、`MAX_OUTPUT_TOKENS`、`OPINION_MAX_OUTPUT_TOKENS`（默认 600）、`MODEL_PRICES`、`MAX_CONCURRENT_CALLS`（默认 2，冲突阶段并行所需）；另有 `MAX_FIX_ROUNDS`、`TALENTS_DIR`、`OUTPUT_DIR`、`EVOLUTION_DIR`（代码默认值 `output/evolution`，未写进 `.env.example`）。
+见 [.env.example](file:///Users/lmliyascarlet/Desktop/项目/OneManCompany/OneGameStudio/.env.example)：`APP_MODE`、`DEMO_READ_ONLY`、`DEMO_DIR`、`ACCESS_TOKEN`、`TASK_RATE_LIMIT_PER_MINUTE`、`MAX_ACTIVE_TASKS`、`DEMO_REPLAY_MS`、`MOCK_MODE`、`LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`、`REQUEST_TIMEOUT_SECONDS`、`STAGE_MIN_SECONDS`、`PROVIDER_MAX_RETRIES`、`PROVIDER_RETRY_BACKOFF_SECONDS`、`BUDGET_USD`、`BUDGET_SOFT_RATIO`、`LIGHT_MODEL`、`MAX_OUTPUT_TOKENS`、`OPINION_MAX_OUTPUT_TOKENS`（默认 600）、`MODEL_PRICES`、`MAX_CONCURRENT_CALLS`（默认 2，冲突阶段并行所需）；另有 `MAX_FIX_ROUNDS`、`TALENTS_DIR`、`OUTPUT_DIR`、`EVOLUTION_DIR`（代码默认值 `output/evolution`）。
 
 ---
 
@@ -296,8 +311,10 @@ FAST：reviewing（PASS）→ completed（跳过 marketing）
 
 | 方法     | 路径                                        | 请求                                                                                                  | 响应                                                                                                                |
 | -------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| GET      | `/api/health`                               | —                                                                                                     | `{"status":"ok","mock_mode":true\|false}`                                                                           |
-| POST     | `/api/tasks`                                | `{"requirement": "非空字符串", "sop_mode"?: "fast\|balanced\|creative", "source_version_id"?: "..."}` | `202` + `TaskRecord`；同一需求有活跃任务时 `409`（`detail` 含 `task_id`、`status`）；非法版本 `400`，缺失版本 `404` |
+| GET      | `/api/health`                               | —                                                                                                     | `{"status":"ok","mode":"demo\|live","mock_mode":bool,"read_only":bool,"live_ready":bool}`                           |
+| GET      | `/api/demo`                                 | —                                                                                                     | Demo 历史任务列表（`demo/tasks`，只读）                                                                             |
+| POST     | `/api/tasks`                                | `{"requirement": "非空字符串", "sop_mode"?: "fast\|balanced\|creative", "source_version_id"?: "..."}` | Demo 只读 → `403`；Live 未配置 → `503`；令牌错误 → `401`；限流/并发 → `429`；其余同下                               |
+| POST     | `/api/tasks`（正常路径）                    | 同上，Live 需 `X-OGS-Token`                                                                           | `202` + `TaskRecord`；同一需求有活跃任务时 `409`（`detail` 含 `task_id`、`status`）；非法版本 `400`，缺失版本 `404` |
 | GET      | `/api/tasks/{task_id}`                      | —                                                                                                     | `TaskRecord`；非法 id 或不存在 → `404`                                                                              |
 | POST     | `/api/tasks/{task_id}/cancel`               | —                                                                                                     | `202` + `TaskRecord`；终态任务 → `409`                                                                              |
 | GET      | `/api/tasks/{task_id}/artifacts`            | —                                                                                                     | `{文件名: 文件内容}`（只含已登记产物）                                                                              |
@@ -306,7 +323,9 @@ FAST：reviewing（PASS）→ completed（跳过 marketing）
 | GET      | `/api/tasks/{task_id}/versions`             | —                                                                                                     | 不可变 `GameVersion` 列表（按版本号升序）                                                                           |
 | GET      | `/preview/{task_id}/{filename}`             | 仅 `index.html`、`history/index.v{n}.html`                                                            | `text/html` + CSP/nosniff/no-store；否则 `404`                                                                      |
 | WS       | `/ws/tasks/{task_id}`                       | —                                                                                                     | 首帧 `{"type":"task.snapshot","task": {...}}`，之后为事件消息；空闲 20s 发 `ping`；非法/未知任务关闭码 `4404`       |
-| GET      | `/api/talents`                              | —                                                                                                     | 六名员工与当前启用版本                                                                                              |
+| GET      | `/api/talents`                              | —                                                                                                     | 员工当前启用版本 + 已完成任务数量与名称                                                                             |
+| GET      | `/api/employees`                            | —                                                                                                     | 6 个职位、角色、任务统计与岗位级 `active_talent`（仅工程师职位有两个角色）                                          |
+| POST     | `/api/positions/{position}/switch`          | `{"talent_name": "..."}`                                                                              | 切换岗位启用角色；角色不属于该岗位 → `409`，岗位不存在 → `404`                                                      |
 | GET      | `/api/talents/{talent}`                     | —                                                                                                     | 版本、经验、提案、评估、审计、回归用例与阈值                                                                        |
 | POST     | `/api/talents/{talent}/diagnose`            | —                                                                                                     | 跑固定回归集，生成 verified 经验                                                                                    |
 | POST     | `/api/talents/{talent}/rollback`            | `{"version": n, "reason": "..."}`                                                                     | 回滚到非候选版本；候选版本 → `409`                                                                                  |
@@ -498,8 +517,8 @@ uv run pytest -q
 
 | 命令                                                | 结果                                         |
 | --------------------------------------------------- | -------------------------------------------- |
-| `uv run pytest -q`                                  | **109 passed in 61.14s**                     |
-| `uv run python -c "import backend.main"`            | `app ok OneGameStudio 0.9.0 mock=True`       |
+| `uv run pytest -q`                                  | **119 passed in 79.54s**                     |
+| `uv run python -c "import backend.main"`            | `app ok OneGameStudio 0.10.0 mock=True`      |
 | 临时端口启动 `uvicorn backend.main:app --port 8123` | `/api/health` 200、`/` 200、`/style.css` 200 |
 | 前端构建                                            | 不需要；FastAPI 直接挂载 `frontend/`         |
 
@@ -597,16 +616,16 @@ LLM_MODEL=...
 
 ## 11. 交接验收记录
 
-| 项目      | 结果                                                                                                                                                                                                                                        |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 测试命令  | `uv run pytest -q`                                                                                                                                                                                                                          |
-| 测试结果  | **109 passed in 61.14s**                                                                                                                                                                                                                    |
-| 测试文件  | `test_api.py`(18) / `test_contract.py`(6) / `test_evolution.py`(19) / `test_gate.py`(9) / `test_harness.py`(14) / `test_sop.py`(6) / `test_talents.py`(9) / `test_versions.py`(5) / `test_vessel.py`(11) / `test_workflow.py`(12)，合计 109 |
-| 应用导入  | 通过（FastAPI `OneGameStudio` v0.9.0，`mock_mode=True`）                                                                                                                                                                                    |
-| HTTP 冒烟 | `/api/health`、`/`、`/style.css`、`/talent.js` 均 200                                                                                                                                                                                       |
-| Git 状态  | `main`，`73dd5a2`；阶段 9 前端、引擎补丁、测试与文档未提交                                                                                                                                                                                  |
-| 手工验收  | 浏览器：SOP 下拉 / 六员工 / BALANCED 徽章 / Studio（提案、裁决、版本、指标）/ Game 预览全部通过，控制台无 JS 报错；HTTP 实跑 FAST 5 次 38.2s、BALANCED 8 次 50.4s、CREATIVE 9 次 62.4s（均为 Mock）                                         |
-| 未验证项  | 真实 LLM 端到端、真实模型评估（live）、前端 E2E 自动化、多 worker 部署、npx 启动、预算并发压力测试                                                                                                                                          |
+| 项目      | 结果                                                                                                                                                                                                                                                   |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 测试命令  | `uv run pytest -q`                                                                                                                                                                                                                                     |
+| 测试结果  | **119 passed**                                                                                                                                                                                                                                         |
+| 测试文件  | `test_api.py`(18) / `test_contract.py`(6) / `test_evolution.py`(21) / `test_gate.py`(9) / `test_harness.py`(14) / `test_modes.py`(6) / `test_sop.py`(6) / `test_talents.py`(9) / `test_versions.py`(5) / `test_vessel.py`(11) / `test_workflow.py`(12) |
+| 应用导入  | 通过（FastAPI `OneGameStudio` v0.10.0，`mock_mode=True`）                                                                                                                                                                                              |
+| HTTP 冒烟 | `/api/health`、`/`、`/style.css`、`/talent.js` 均 200                                                                                                                                                                                                  |
+| Git 状态  | `main`；远端 `origin` 指向私有的 `github.com/Lmliya/OneGameStudio`；阶段 9/10 改动均未提交、未推送                                                                                                                                                     |
+| 手工验收  | 浏览器：SOP 下拉 / 六员工 / BALANCED 徽章 / Studio（提案、裁决、版本、指标）/ Game 预览全部通过，控制台无 JS 报错；HTTP 实跑 FAST 5 次 38.2s、BALANCED 8 次 50.4s、CREATIVE 9 次 62.4s（均为 Mock）                                                    |
+| 未验证项  | 真实 LLM 端到端、真实模型评估（live）、实际线上部署、npm 包发布、真实 GitHub 推送、多 worker 部署、npx 启动、预算并发压力测试                                                                                                                          |
 
 ### 交接时的 Git 信息
 

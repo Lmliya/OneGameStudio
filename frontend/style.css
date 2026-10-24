@@ -555,10 +555,65 @@ ul.plain {
 }
 
 .talent-list {
-  flex: 0 0 132px;
-  width: 132px;
+  flex: 0 0 196px;
+  width: 196px;
   border-right: 2px solid var(--border);
   padding: 8px;
+}
+
+.position-card {
+  margin-bottom: 10px;
+  padding: 6px;
+  border: 2px solid var(--border);
+}
+
+.position-card .p-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.position-card .p-title {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.position-card .p-count {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.position-card .talent-item {
+  margin-bottom: 6px;
+}
+
+.position-card .talent-item:last-child {
+  margin-bottom: 0;
+}
+
+.talent-item .p-badge {
+  margin-left: 4px;
+  padding: 1px 4px;
+  border: 1px solid currentColor;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.talent-item .p-badge.on {
+  color: var(--accent);
+}
+
+.talent-item .p-badge.off {
+  color: var(--muted);
+}
+
+.talent-item .mini-btn.switch {
+  display: block;
+  margin-top: 4px;
 }
 
 .talent-item {
@@ -593,6 +648,25 @@ ul.plain {
   display: block;
   color: var(--muted);
   font-size: 11px;
+}
+
+.talent-item .t-stats {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.talent-item .t-tasks {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-all;
 }
 
 .talent-detail {
@@ -709,6 +783,30 @@ ul.plain {
   word-break: break-word;
 }
 
+.task-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.task-row:last-child {
+  border-bottom: none;
+}
+
+.task-row .task-id {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.task-row .task-name {
+  flex: 1;
+  font-size: 12px;
+  word-break: break-all;
+}
+
 .check-list {
   margin: 4px 0 0;
   padding-left: 16px;
@@ -769,4 +867,20 @@ ul.plain {
 
 .status-rejected {
   color: var(--danger);
+}
+
+/* Demo / Live 模式横幅：明确区分历史回放与真实模型调用 */
+.mode-banner {
+  padding: 6px 14px;
+  border-bottom: 2px solid var(--border);
+  background: #3a2f12;
+  color: var(--warn);
+  font-size: 12px;
+  text-align: center;
+  letter-spacing: 0.5px;
+}
+
+.mode-banner.live {
+  background: #12301d;
+  color: var(--accent);
 }

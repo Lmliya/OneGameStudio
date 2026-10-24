@@ -1,0 +1,15 @@
+{
+  "talent_name": "marketer",
+  "active_version": 1,
+  "updated_at": "2026-10-24T11:39:40.762796+00:00",
+  "audit": [
+    {
+      "at": "2026-10-24T11:39:40.762798+00:00",
+      "action": "seed",
+      "from_version": null,
+      "to_version": 1,
+      "reason": "基线注册",
+      "proposal_id": null
+    }
+  ]
+}

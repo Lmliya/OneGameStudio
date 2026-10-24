@@ -42,7 +42,7 @@ frontend/
     style.css        像素风样式
     office.js        Canvas 2D 像素办公室（事件驱动的员工动画）
     app.js           WebSocket、快照恢复、产物渲染、日志
-    talent.js        Talent 面板：版本、经验、提案、评估、批准/回滚
+    talent.js        Employee 面板：版本、经验、提案、评估、批准/回滚、已完成任务
 backend/
     main.py          FastAPI：API + WebSocket + 隔离预览 + 静态页面
     bus.py           进程内事件总线
@@ -56,7 +56,7 @@ backend/
     gate/            机械门禁（Playwright）
     workflow/        状态机、SOP 选择与编排引擎
     evolution/       阶段 8：版本库、经验库、提案、回归评估与审批 API
-talents/             六个员工的 YAML（基线 v1 由此播种）
+talents/             员工/岗位 YAML（六名在岗 + 备用工程师，基线 v1 由此播种）
 tests/               pytest
 docs/                架构、进度、冲突协议与极速 SOP
 output/{task_id}/    任务产物（不入库）

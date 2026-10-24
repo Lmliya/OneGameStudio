@@ -8,7 +8,7 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230d0f17'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%237ee787'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%2358a6ff'/%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/style.css?v=20261024g" />
   </head>
   <body>
     <header class="topbar">
@@ -38,6 +38,13 @@
           placeholder="来源版本 ID（可选）"
           title="填写历史版本 ID 可从该版本创建创新分支"
         />
+        <input
+          id="access-token"
+          class="source-input hidden"
+          type="password"
+          placeholder="Live 访问令牌"
+          title="服务端设置 ACCESS_TOKEN 时必填"
+        />
         <button id="submit" type="submit">开始开发</button>
       </form>
 
@@ -48,6 +55,8 @@
         <span id="task-id" class="task-id"></span>
       </div>
     </header>
+
+    <div id="mode-banner" class="mode-banner hidden"></div>
 
     <main class="layout">
       <section class="office panel">
@@ -64,7 +73,7 @@
           <button type="button" data-tab="studio">Studio</button>
           <button type="button" data-tab="review">Review</button>
           <button type="button" data-tab="marketing">Marketing</button>
-          <button type="button" data-tab="talent">Talent</button>
+          <button type="button" data-tab="employee">Employee</button>
           <button type="button" data-tab="logs">Logs</button>
         </nav>
 
@@ -106,12 +115,13 @@
             <div id="marketing-body" class="scroll"></div>
           </section>
 
-          <section id="tab-talent" class="tab-pane hidden">
+          <section id="tab-employee" class="tab-pane hidden">
             <div class="talent-wrap">
               <div id="talent-list" class="talent-list scroll"></div>
               <div id="talent-detail" class="talent-detail scroll">
                 <p class="muted">
-                  选择左侧员工查看 Talent 版本、经验与进化提案。
+                  6
+                  个职位，每个职位下展示对应角色；点开角色查看基础信息与完成过的任务。
                 </p>
               </div>
             </div>
@@ -129,8 +139,8 @@
       <div id="log-strip" class="log-strip"></div>
     </footer>
 
-    <script src="/office.js"></script>
-    <script src="/app.js"></script>
-    <script src="/talent.js"></script>
+    <script src="/office.js?v=20261024g"></script>
+    <script src="/app.js?v=20261024g"></script>
+    <script src="/talent.js?v=20261024g"></script>
   </body>
 </html>

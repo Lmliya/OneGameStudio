@@ -1,6 +1,6 @@
 [project]
 name = "onegamestudio"
-version = "0.1.0"
+version = "0.10.0"
 description = "OneGameStudio — 轻量级 AI 游戏开发工作室"
 requires-python = ">=3.12"
 dependencies = [

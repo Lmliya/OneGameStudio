@@ -722,9 +722,13 @@ async function submitRequirement(requirement) {
     const sourceVersion = el("source-version").value.trim();
     if (sourceVersion) payload.source_version_id = sourceVersion;
 
+    const headers = { "Content-Type": "application/json" };
+    const token = el("access-token") ? el("access-token").value.trim() : "";
+    if (token) headers["X-OGS-Token"] = token;
+
     const response = await fetch("/api/tasks", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(payload),
     });
     const data = await response.json();
@@ -733,7 +737,11 @@ async function submitRequirement(requirement) {
       return;
     }
     if (!response.ok) {
-      throw new Error(data.detail || `HTTP ${response.status}`);
+      throw new Error(
+        typeof data.detail === "string"
+          ? data.detail
+          : data.detail?.message || `HTTP ${response.status}`,
+      );
     }
     attachTask(data.task_id);
   } catch (error) {
@@ -781,13 +789,80 @@ el("reload-preview").addEventListener("click", () =>
 
 // ---------- 启动 ----------
 
-async function boot() {
+function renderMode(health) {
+  const mode = health.mode || (health.mock_mode ? "demo" : "live");
+  const banner = el("mode-banner");
+  const readOnly = mode === "demo" && Boolean(health.read_only);
+  if (banner) {
+    banner.classList.remove("hidden");
+    banner.classList.toggle("live", mode === "live");
+    if (mode === "demo") {
+      banner.textContent = readOnly
+        ? "DEMO 模式 · 只读历史任务回放，不会调用真实模型，也不会产生费用"
+        : "DEMO 模式 · 历史任务回放；本地 Mock 运行不会调用真实模型";
+    } else if (health.live_ready) {
+      banner.textContent =
+        "LIVE 模式 · 调用真实模型；受访问令牌、并发、频率与预算限制";
+    } else {
+      banner.textContent =
+        "LIVE 模式未配置完成 · 需要服务端 LLM_API_KEY、LLM_MODEL 且 MOCK_MODE=false";
+    }
+  }
+
+  const tokenInput = el("access-token");
+  if (tokenInput) tokenInput.classList.toggle("hidden", mode !== "live");
+
+  el("requirement").disabled = readOnly;
+  el("submit").disabled = readOnly;
+  el("sop-mode").disabled = readOnly;
+  el("source-version").disabled = readOnly;
+}
+
+async function loadDemoTask() {
   try {
-    const health = await fetch("/api/health").then((r) => r.json());
-    state.mock = Boolean(health.mock_mode);
-    setConn(health.mock_mode ? "Mock 模式" : "真实模式", "badge-ok");
+    const demo = await fetch("/api/demo").then((r) => r.json());
+    const tasks = Array.isArray(demo.tasks) ? demo.tasks : [];
+    const task = tasks.find((item) => item.status === "completed") || tasks[0];
+    if (!task) {
+      el("office-task").textContent = "暂无演示任务";
+      return;
+    }
+    attachTask(task.task_id);
+    el("requirement").value = task.name;
+  } catch (error) {
+    pushLog({
+      type: "task.failed",
+      message: `演示数据加载失败：${error.message}`,
+      ts: new Date().toISOString(),
+    });
+  }
+}
+
+async function boot() {
+  let health;
+  try {
+    health = await fetch("/api/health").then((r) => r.json());
   } catch (error) {
     setConn("后端未连接", "badge-danger");
+    return;
+  }
+
+  const mode = health.mode || (health.mock_mode ? "demo" : "live");
+  state.mode = mode;
+  state.mock = Boolean(health.mock_mode);
+  renderMode(health);
+  setConn(
+    mode === "demo"
+      ? "Demo 模式"
+      : health.live_ready
+        ? "Live 模式"
+        : "Live 未配置",
+    "badge-ok",
+  );
+
+  if (mode === "demo") {
+    // Demo 始终加载随仓库提交的历史任务，忽略本地残留的任务 ID
+    await loadDemoTask();
     return;
   }
 

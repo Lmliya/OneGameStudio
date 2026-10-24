@@ -2,10 +2,12 @@
 
 import asyncio
 import re
+from collections import defaultdict, deque
 from pathlib import Path
+from time import monotonic
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import PlainTextResponse, Response
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from backend.budget import BudgetGuard
@@ -15,7 +17,11 @@ from backend.core.vessel import Vessel
 from backend.evolution.api import create_evolution_router
 from backend.evolution.service import EvolutionService
 from backend.evolution.store import EvolutionStore
-from backend.models.contract import TaskCreateRequest, TaskRecord
+from backend.models.contract import (
+    TERMINAL_STATUSES,
+    TaskCreateRequest,
+    TaskRecord,
+)
 from backend.providers import build_provider
 from backend.store import (
     TaskNotFoundError,
@@ -28,8 +34,25 @@ from backend.workflow import TaskNotRunnableError, WorkflowEngine
 ROOT_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = ROOT_DIR / "frontend"
 
-app = FastAPI(title="OneGameStudio", version="0.9.0")
+app = FastAPI(title="OneGameStudio", version="0.10.0")
 settings = get_settings()
+
+
+@app.middleware("http")
+async def require_access_token(request: Request, call_next):
+    """配置 ACCESS_TOKEN 后，所有写接口都必须携带令牌。
+
+    Talent 安全配置、岗位切换、任务创建等写操作共用同一道门禁，
+    未授权请求无法消耗模型额度，也无法修改进化配置。
+    """
+    if (
+        settings.access_token
+        and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+        and request.url.path.startswith("/api/")
+        and request.headers.get("X-OGS-Token") != settings.access_token
+    ):
+        return JSONResponse(status_code=401, content={"detail": "访问令牌无效"})
+    return await call_next(request)
 
 
 def _resolve(path: Path) -> Path:
@@ -38,6 +61,8 @@ def _resolve(path: Path) -> Path:
 
 
 store = TaskStore(_resolve(settings.output_dir))
+# 随仓库提交的预验证历史任务，Demo 模式只读展示
+demo_store = TaskStore(_resolve(settings.demo_dir))
 bus = EventBus()
 budget_guard = BudgetGuard.from_settings(settings)
 # 阶段 8：Talent 版本库（首次启动把 talents/*.yaml 注册为 v1）
@@ -70,7 +95,11 @@ engine = WorkflowEngine(
     budget=budget_guard,
     opinion_max_output_tokens=settings.opinion_max_output_tokens,
 )
-app.include_router(create_evolution_router(evolution_store, evolution_service, store))
+app.include_router(
+    create_evolution_router(
+        evolution_store, evolution_service, [store, demo_store]
+    )
+)
 
 # 持有后台任务引用，防止被垃圾回收
 _background: set[asyncio.Task] = set()
@@ -102,24 +131,117 @@ def schedule(task_id: str) -> None:
     task.add_done_callback(_background.discard)
 
 
-def _load_or_404(task_id: str) -> TaskRecord:
+# 单 IP 创建任务的滑动窗口，进程内限流；多实例部署需改用共享存储
+_submissions: dict[str, deque[float]] = defaultdict(deque)
+
+
+def _rate_limited(client_ip: str) -> bool:
+    limit = settings.task_rate_limit_per_minute
+    if limit <= 0:
+        return False
+    now = monotonic()
+    bucket = _submissions[client_ip]
+    while bucket and now - bucket[0] > 60:
+        bucket.popleft()
+    if len(bucket) >= limit:
+        return True
+    bucket.append(now)
+    return False
+
+
+def _live_ready() -> bool:
+    """Live 模式必须同时具备真实供应商、模型名与服务端密钥。"""
+    return (
+        settings.app_mode == "live"
+        and not settings.mock_mode
+        and bool(settings.llm_model)
+        and bool(settings.llm_api_key)
+    )
+
+
+def _store_for(task_id: str) -> TaskStore:
+    """本地任务与只读演示任务共用同一套查询接口。"""
     if not _TASK_ID.match(task_id):
         raise HTTPException(status_code=404, detail="任务不存在")
+    for candidate in (store, demo_store):
+        if candidate.exists(task_id):
+            return candidate
+    raise HTTPException(status_code=404, detail="任务不存在")
+
+
+def _load_or_404(task_id: str) -> TaskRecord:
     try:
-        return store.load(task_id)
+        return _store_for(task_id).load(task_id)
     except TaskNotFoundError as exc:
         raise HTTPException(status_code=404, detail="任务不存在") from exc
 
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok", "mock_mode": settings.mock_mode}
+    return {
+        "status": "ok",
+        "mode": settings.app_mode,
+        "mock_mode": settings.mock_mode,
+        "read_only": settings.app_mode == "demo" and settings.demo_read_only,
+        "live_ready": _live_ready(),
+    }
+
+
+@app.get("/api/demo")
+def demo_info() -> dict:
+    """公开演示：只返回随仓库提交的预验证历史任务。"""
+    tasks = [
+        {
+            "task_id": record.task_id,
+            "name": record.requirement,
+            "status": record.status.value,
+            "final_version_id": record.final_version_id,
+            "sop_mode": record.sop_mode.value if record.sop_mode else None,
+        }
+        for record in demo_store.list_records()
+    ]
+    return {
+        "mode": settings.app_mode,
+        "read_only": settings.app_mode == "demo" and settings.demo_read_only,
+        "tasks": tasks,
+    }
 
 
 @app.post("/api/tasks", response_model=TaskRecord, status_code=202)
-async def create_task(request: TaskCreateRequest) -> TaskRecord:
+async def create_task(
+    payload: TaskCreateRequest, http_request: Request
+) -> TaskRecord:
     """创建任务并在后台执行工作流。相同需求的运行中任务会拒绝重复提交。"""
-    existing = store.find_active_by_requirement(request.requirement)
+    if settings.app_mode == "demo" and settings.demo_read_only:
+        raise HTTPException(
+            status_code=403,
+            detail="Demo 模式为只读：只能浏览历史任务，请切换到 Live 模式后再提交。",
+        )
+    if settings.app_mode == "live" and not _live_ready():
+        raise HTTPException(
+            status_code=503,
+            detail="Live 模式未配置完成：需要服务端 LLM_API_KEY、LLM_MODEL 且 MOCK_MODE=false。",
+        )
+    if settings.app_mode == "live" and settings.access_token:
+        if http_request.headers.get("X-OGS-Token") != settings.access_token:
+            raise HTTPException(status_code=401, detail="访问令牌无效")
+
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    if _rate_limited(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail=f"提交过于频繁：每分钟最多 {settings.task_rate_limit_per_minute} 次",
+        )
+    active = sum(
+        1 for record in store.list_records() if record.status not in TERMINAL_STATUSES
+    )
+    if active >= settings.max_active_tasks:
+        raise HTTPException(
+            status_code=429,
+            detail=f"并发任务已达上限（{settings.max_active_tasks}），请等待现有任务结束",
+        )
+
+    existing = store.find_active_by_requirement(payload.requirement)
     if existing is not None:
         raise HTTPException(
             status_code=409,
@@ -132,10 +254,10 @@ async def create_task(request: TaskCreateRequest) -> TaskRecord:
 
     try:
         record = store.create(
-            request.requirement,
+            payload.requirement,
             max_fix_rounds=settings.max_fix_rounds,
-            sop_mode=request.sop_mode,
-            source_version_id=request.source_version_id,
+            sop_mode=payload.sop_mode,
+            source_version_id=payload.source_version_id,
         )
     except VersionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -182,7 +304,7 @@ def get_artifact_file(task_id: str, filename: str) -> PlainTextResponse:
     _load_or_404(task_id)
     if not _ARTIFACT_FILE.match(filename):
         raise HTTPException(status_code=404, detail="产物不存在")
-    path = store.task_dir(task_id) / filename
+    path = _store_for(task_id).task_dir(task_id) / filename
     if not path.exists():
         raise HTTPException(status_code=404, detail="产物不存在")
     return PlainTextResponse(path.read_text(encoding="utf-8"))
@@ -191,15 +313,16 @@ def get_artifact_file(task_id: str, filename: str) -> PlainTextResponse:
 @app.get("/api/tasks/{task_id}/versions")
 def list_versions(task_id: str) -> list[dict]:
     """返回该任务的全部不可变游戏版本记录。"""
-    _load_or_404(task_id)
-    return [item.model_dump(mode="json") for item in store.list_versions(task_id)]
+    return [
+        item.model_dump(mode="json")
+        for item in _store_for(task_id).list_versions(task_id)
+    ]
 
 
 @app.get("/api/tasks/{task_id}/history")
 def list_history(task_id: str) -> list[str]:
     """返回历史版本快照文件名，供 Review 标签页展示 V1/V2/V3。"""
-    _load_or_404(task_id)
-    history_dir = store.task_dir(task_id) / "history"
+    history_dir = _store_for(task_id).task_dir(task_id) / "history"
     if not history_dir.exists():
         return []
     return sorted(
@@ -212,7 +335,7 @@ def preview(task_id: str, filename: str) -> Response:
     """隔离预览：只回放游戏 HTML，并用 CSP 切断一切外部访问。"""
     if not _TASK_ID.match(task_id) or not _PREVIEW_FILE.match(filename):
         raise HTTPException(status_code=404, detail="预览文件不存在")
-    path = store.task_dir(task_id) / filename
+    path = _store_for(task_id).task_dir(task_id) / filename
     if not path.exists():
         raise HTTPException(status_code=404, detail="预览文件不存在")
     return Response(
@@ -234,16 +357,26 @@ async def task_stream(websocket: WebSocket, task_id: str) -> None:
         await websocket.close(code=4404)
         return
     try:
-        record = store.load(task_id)
-    except TaskNotFoundError:
+        task_store = _store_for(task_id)
+        record = task_store.load(task_id)
+    except (TaskNotFoundError, HTTPException):
         await websocket.close(code=4404)
         return
 
     queue = bus.subscribe(task_id)
     try:
-        await websocket.send_json(
-            {"type": "task.snapshot", "task": record.model_dump(mode="json")}
-        )
+        # Demo 历史任务：先给空事件快照，再按顺序回放，避免日志重复
+        if settings.app_mode == "demo" and task_store is demo_store:
+            payload = record.model_dump(mode="json")
+            payload["events"] = []
+            await websocket.send_json({"type": "task.snapshot", "task": payload})
+            for event in record.events:
+                await websocket.send_json(event.model_dump(mode="json"))
+                await asyncio.sleep(settings.demo_replay_ms / 1000)
+        else:
+            await websocket.send_json(
+                {"type": "task.snapshot", "task": record.model_dump(mode="json")}
+            )
         while True:
             try:
                 message = await asyncio.wait_for(queue.get(), timeout=20)

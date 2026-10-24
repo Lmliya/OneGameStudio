@@ -1,0 +1,15 @@
+{
+  "talent_name": "creative",
+  "active_version": 1,
+  "updated_at": "2026-10-24T11:39:40.759211+00:00",
+  "audit": [
+    {
+      "at": "2026-10-24T11:39:40.759213+00:00",
+      "action": "seed",
+      "from_version": null,
+      "to_version": 1,
+      "reason": "基线注册",
+      "proposal_id": null
+    }
+  ]
+}

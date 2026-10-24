@@ -47,17 +47,19 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="read_prd",
         description="读取 PRD 作为上下文",
-        allowed_agents=frozenset({"engineer", "marketer", "creative", "delivery"}),
+        allowed_agents=frozenset(
+            {"engineer", "backup_engineer", "marketer", "creative", "delivery"}
+        ),
     ),
     ToolSpec(
         name="write_game",
         description="写入游戏文件 index.html",
-        allowed_agents=frozenset({"engineer"}),
+        allowed_agents=frozenset({"engineer", "backup_engineer"}),
     ),
     ToolSpec(
         name="read_review",
         description="读取审查报告作为修复依据",
-        allowed_agents=frozenset({"engineer", "marketer"}),
+        allowed_agents=frozenset({"engineer", "backup_engineer", "marketer"}),
     ),
     ToolSpec(
         name="read_game",

@@ -6,7 +6,9 @@
 本阶段没有用户系统，权限模型是“本机单用户”，文档中已明确声明。
 """
 
+import json
 from functools import wraps
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -19,6 +21,7 @@ from backend.evolution.errors import (
 )
 from backend.evolution.service import EvolutionService
 from backend.evolution.store import EvolutionStore
+from backend.models.contract import TaskStatus
 from backend.store import TaskNotFoundError, TaskStore
 
 
@@ -34,6 +37,54 @@ class RollbackRequest(BaseModel):
 
 class VerifyLessonRequest(BaseModel):
     verification: str = Field(min_length=1)
+
+
+class SwitchTalentRequest(BaseModel):
+    talent_name: str = Field(min_length=1)
+
+
+# Employee 面板的岗位结构：岗位固定 6 个，角色按 Talent 归属。
+# 目前只有 Engineer 岗位拥有两个角色（主工程师 + 备用工程师）。
+POSITIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("coo", "需求分析", ("coo",)),
+    ("creative", "创意总监", ("creative",)),
+    ("delivery", "交付总监", ("delivery",)),
+    ("engineer", "工程师", ("engineer", "backup_engineer")),
+    ("reviewer", "质量审查", ("reviewer",)),
+    ("marketer", "营销素材", ("marketer",)),
+)
+POSITIONS_DIR = "positions"
+
+
+def _position_members() -> dict[str, tuple[str, str, tuple[str, ...]]]:
+    return {item[0]: item for item in POSITIONS}
+
+
+def _active_position_talent(root: Path, position: str, members: tuple[str, ...]) -> str:
+    """岗位级启用指针：同一岗位同一时间只有一个角色处于启用状态。"""
+    path = root / POSITIONS_DIR / f"{position}.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        talent = payload.get("active_talent")
+        if talent in members:
+            return talent
+    except (OSError, ValueError):
+        pass
+    return members[0]
+
+
+def _set_active_position_talent(
+    root: Path, position: str, talent: str, members: tuple[str, ...]
+) -> str:
+    if talent not in members:
+        raise EvolutionStateError(f"{talent} 不属于岗位 {position}")
+    directory = root / POSITIONS_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f"{position}.json").write_text(
+        json.dumps({"active_talent": talent}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return talent
 
 
 def _handle(func):
@@ -57,16 +108,96 @@ def _handle(func):
     return wrapper
 
 
+def _task_stats(
+    task_store: TaskStore | list[TaskStore] | None,
+) -> dict[str, dict]:
+    """按 Talent 统计已完成的任务。
+
+    归属依据是 `TaskRecord.talent_versions` 里真实出现的 Talent 键，
+    只统计 status == completed 的任务，避免把未参与的角色算进来。
+    传入多个 TaskStore 时合并统计（本地任务 + 演示历史任务）。
+    """
+    if task_store is None:
+        return {}
+    stores = task_store if isinstance(task_store, list) else [task_store]
+
+    seen: set[str] = set()
+    stats: dict[str, dict] = {}
+    for active_store in stores:
+        for record in active_store.list_records():
+            if record.task_id in seen or record.status != TaskStatus.COMPLETED:
+                continue
+            seen.add(record.task_id)
+            entry = {
+                "task_id": record.task_id,
+                "name": record.requirement,
+                "final_version_id": record.final_version_id,
+            }
+            for talent in record.talent_versions:
+                bucket = stats.setdefault(talent, {"count": 0, "tasks": []})
+                bucket["count"] += 1
+                bucket["tasks"].append(entry)
+    return stats
+
+
 def create_evolution_router(
     store: EvolutionStore,
     service: EvolutionService,
-    task_store: TaskStore | None = None,
+    task_store: TaskStore | list[TaskStore] | None = None,
 ) -> APIRouter:
     router = APIRouter()
 
+    def talents_with_stats() -> list[dict]:
+        items = service.talents()
+        stats = _task_stats(task_store)
+        for item in items:
+            stat = stats.get(item["talent_name"], {"count": 0, "tasks": []})
+            item["completed_count"] = stat["count"]
+            item["completed_tasks"] = stat["tasks"]
+        return items
+
     @router.get("/api/talents")
     def list_talents() -> list[dict]:
-        return service.talents()
+        return talents_with_stats()
+
+    @router.get("/api/employees")
+    def list_employees() -> list[dict]:
+        """按岗位聚合员工，供 Employee 面板展示。"""
+        by_talent = {item["talent_name"]: item for item in talents_with_stats()}
+        positions = []
+        for position_id, title, members in POSITIONS:
+            active = _active_position_talent(store.root, position_id, members)
+            roles = []
+            for name in members:
+                if name not in by_talent:
+                    continue
+                role = dict(by_talent[name])
+                role["is_active_for_position"] = name == active
+                roles.append(role)
+            positions.append(
+                {
+                    "position": position_id,
+                    "title": title,
+                    "active_talent": active,
+                    "roles": roles,
+                }
+            )
+        return positions
+
+    @router.post("/api/positions/{position}/switch")
+    @_handle
+    def switch_position_talent(
+        position: str, payload: SwitchTalentRequest
+    ) -> dict:
+        """手动切换岗位当前启用的角色。"""
+        entry = _position_members().get(position)
+        if entry is None:
+            raise HTTPException(status_code=404, detail=f"岗位不存在：{position}")
+        _, title, members = entry
+        active = _set_active_position_talent(
+            store.root, position, payload.talent_name, members
+        )
+        return {"position": position, "title": title, "active_talent": active}
 
     @router.get("/api/talents/{talent}")
     @_handle

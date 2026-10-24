@@ -1,0 +1,15 @@
+{
+  "talent_name": "backup_engineer",
+  "active_version": 1,
+  "updated_at": "2026-10-24T12:04:13.513072+00:00",
+  "audit": [
+    {
+      "at": "2026-10-24T12:04:13.513078+00:00",
+      "action": "seed",
+      "from_version": null,
+      "to_version": 1,
+      "reason": "基线注册",
+      "proposal_id": null
+    }
+  ]
+}

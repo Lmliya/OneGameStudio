@@ -1,0 +1,28 @@
+{
+  "name": "onegamestudio",
+  "version": "0.10.0",
+  "description": "OneGameStudio: multi-agent HTML5 game studio with pixel office, quality gates and talent evolution",
+  "license": "MIT",
+  "private": true,
+  "bin": {
+    "onegamestudio": "cli/bin.js"
+  },
+  "files": [
+    "cli",
+    "backend",
+    "frontend",
+    "talents",
+    "demo",
+    "pyproject.toml",
+    "uv.lock",
+    ".env.example",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "check": "node cli/bin.js --check"
+  }
+}

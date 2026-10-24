@@ -2,8 +2,12 @@ __pycache__/
 *.py[cod]
 .venv/
 .env
+.env.*
+!.env.example
 output/*
 !output/.gitkeep
 .pytest_cache/
 .ruff_cache/
+node_modules/
+npm-debug.log*
 .DS_Store
