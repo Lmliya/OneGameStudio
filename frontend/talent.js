@@ -8,6 +8,7 @@
 
   let selected = null;
   let rolesByTalent = new Map();
+  let flash = "";
 
   const escapeHtml = (value) =>
     String(value ?? "").replace(
@@ -112,8 +113,20 @@
           .join("")
       : '<p class="muted">暂无已完成任务。</p>';
 
+    // 当前任务实际使用的版本来自 TaskRecord.talent_versions，只读展示
+    const task = window.OGS && window.OGS.getTask ? window.OGS.getTask() : null;
+    const used = task && task.talent_versions ? task.talent_versions[talent] : null;
+    const usedText = !task
+      ? "暂无当前任务"
+      : used || "本次任务未使用该角色";
+    const note = flash
+      ? `<p class="talent-note">${escapeHtml(flash)}</p>`
+      : "";
+    flash = "";
+
     detailEl.innerHTML = `
       <div class="talent-head">
+        <canvas class="talent-portrait" width="64" height="64" aria-hidden="true"></canvas>
         <div>
           <b>${escapeHtml(role.name)}</b>
           <span class="muted">${escapeHtml(role.role)}</span>
@@ -127,12 +140,18 @@
         <dt>职位</dt><dd>${escapeHtml(position.title)}</dd>
         <dt>版本</dt><dd>${escapeHtml(role.active_label)}</dd>
         <dt>完成任务</dt><dd>${Number(role.completed_count) || 0} 个</dd>
+        <dt>当前任务实际</dt><dd>${escapeHtml(usedText)}</dd>
       </dl>
+      ${note}
 
       <div class="block">
         <h3>完成过的任务</h3>
         <div class="block-body">${rows}</div>
       </div>`;
+    const portrait = detailEl.querySelector(".talent-portrait");
+    if (portrait && typeof Office !== "undefined" && Office.drawPortrait) {
+      Office.drawPortrait(portrait, talent);
+    }
   }
 
   function loadDetail(talent) {
@@ -148,6 +167,9 @@
       await post(`/api/positions/${encodeURIComponent(position)}/switch`, {
         talent_name: talent,
       });
+      const entry = rolesByTalent.get(talent);
+      flash = `已将「${entry ? entry.role.name : talent}」设为岗位默认角色；正在运行的任务不受影响。`;
+      selected = talent;
       await loadEmployees();
     } catch (error) {
       detailEl.innerHTML = `<p class="muted">切换失败：${escapeHtml(
@@ -166,6 +188,14 @@
         });
       });
       renderPositions(positions);
+      // 工位标签：Engineer 岗位当前默认启用的是主力还是备用
+      const engineerPos = positions.find((item) => item.position === "engineer");
+      if (engineerPos && typeof Office !== "undefined" && Office.setTag) {
+        Office.setTag(
+          "engineer",
+          engineerPos.active_talent === "backup_engineer" ? "默认:备用" : "默认:主力",
+        );
+      }
       if (selected && rolesByTalent.has(selected)) {
         renderDetail(selected);
       } else {
@@ -191,6 +221,23 @@
     document.querySelector('[data-tab="employee"]') ||
     document.querySelector('[data-tab="talent"]');
   if (employeeTab) employeeTab.addEventListener("click", loadEmployees);
+
+  // 办公室工位点击：打开员工标签并选中对应员工；
+  // Engineer 工位选中岗位当前启用角色，可在列表中切换主力/备用
+  function focusAgent(agentId, talent) {
+    let target = talent;
+    rolesByTalent.forEach((entry, name) => {
+      if (entry.position.position === agentId && entry.role.is_active_for_position) {
+        target = name;
+      }
+    });
+    loadDetail(target);
+    if (employeeTab) employeeTab.click();
+    const item = listEl.querySelector(`[data-talent="${CSS.escape(target)}"]`);
+    if (item) item.scrollIntoView({ block: "nearest" });
+  }
+
+  if (typeof Office !== "undefined" && Office.onSelect) Office.onSelect(focusAgent);
 
   // 页面加载时先拉一次，避免用户点开 Employee 时面板还是空的
   loadEmployees();

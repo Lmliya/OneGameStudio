@@ -1,84 +1,44 @@
-// 像素办公室：Canvas 2D 绘制六名员工、办公桌与装饰。
+// 像素办公室：Canvas 2D 绘制六名原创像素员工、工位与暖色办公室装饰。
 // 员工状态只由后端 agent.status_changed 事件驱动，本文件不含任何计时器模拟进度。
-// 同一时刻最多只有一名员工播放动画：由 activeAgent 记录当前焦点。
+// 同一时刻最多只有一名员工播放工作动画：由 activeAgent 记录当前焦点。
+// 点击热区与人物绘制共用 AGENTS 坐标，保证“画在哪里就能点在哪里”。
 
 const Office = (() => {
   const canvas = document.getElementById("office");
   const ctx = canvas.getContext("2d");
   const W = canvas.width;
   const H = canvas.height;
+  const FONT = 'ui-monospace, Menlo, "PingFang SC", "Microsoft YaHei", monospace';
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   // 3 列 × 2 行：上排 COO / CREATIVE / DELIVERY，下排 ENGINEER / REVIEWER / MARKETER
+  // x/y 是桌面中心；热区 = 以 (x, y) 为基准的 HIT 矩形
   const AGENTS = [
-    {
-      id: "coo",
-      name: "COO",
-      role: "产品经理",
-      color: "#58a6ff",
-      hair: "#1f3b6e",
-      skin: "#f2c9a0",
-      x: 150,
-      y: 156,
-    },
-    {
-      id: "creative",
-      name: "CREATIVE",
-      role: "创意总监",
-      color: "#ff9e64",
-      hair: "#8a4b12",
-      skin: "#f2c9a0",
-      x: 440,
-      y: 156,
-    },
-    {
-      id: "delivery",
-      name: "DELIVERY",
-      role: "交付总监",
-      color: "#56d4dd",
-      hair: "#1d5a66",
-      skin: "#f2c9a0",
-      x: 730,
-      y: 156,
-    },
-    {
-      id: "engineer",
-      name: "ENGINEER",
-      role: "游戏工程师",
-      color: "#f0883e",
-      hair: "#7a3d12",
-      skin: "#f2c9a0",
-      x: 150,
-      y: 380,
-    },
-    {
-      id: "reviewer",
-      name: "REVIEWER",
-      role: "质量审查官",
-      color: "#7ee787",
-      hair: "#255c2c",
-      skin: "#f2c9a0",
-      x: 440,
-      y: 380,
-    },
-    {
-      id: "marketer",
-      name: "MARKETER",
-      role: "营销负责人",
-      color: "#c792ea",
-      hair: "#4a2a6a",
-      skin: "#f2c9a0",
-      x: 730,
-      y: 380,
-    },
+    { id: "coo", talent: "coo", name: "COO", role: "产品经理", color: "#5a9fd4", dark: "#2c6496", hair: "#3b2a20", x: 150, y: 178 },
+    { id: "creative", talent: "creative", name: "CREATIVE", role: "创意总监", color: "#f08a5d", dark: "#b4552e", hair: "#c0392b", x: 440, y: 178 },
+    { id: "delivery", talent: "delivery", name: "DELIVERY", role: "交付总监", color: "#4fb3a9", dark: "#2a7a72", hair: "#2b2b3a", x: 730, y: 178 },
+    { id: "engineer", talent: "engineer", name: "ENGINEER", role: "游戏工程师", color: "#f2b134", dark: "#b97a12", hair: "#5a3720", x: 150, y: 384 },
+    { id: "reviewer", talent: "reviewer", name: "REVIEWER", role: "质量审查官", color: "#6fbf73", dark: "#2f7a3e", hair: "#7a4a24", x: 440, y: 384 },
+    { id: "marketer", talent: "marketer", name: "MARKETER", role: "营销负责人", color: "#b07fd6", dark: "#6a3f92", hair: "#e8c35a", x: 730, y: 384 },
   ];
+  const HIT = { left: 96, top: 88, width: 192, height: 156 };
+
+  // 头像外观（含不占工位的备用工程师）
+  const LOOKS = Object.fromEntries(AGENTS.map((a) => [a.talent, a]));
+  LOOKS.backup_engineer = { color: "#e07a9a", dark: "#a34766", hair: "#2d6a8a", glasses: true };
+
+  const SKIN = "#f6cfa4";
+  const SKIN_SHADE = "#e3ae80";
+  const INK = "#45291a";
 
   // 员工状态：值只会在 setAgent() 中被后端事件覆盖
   const state = new Map(
-    AGENTS.map((a) => [a.id, { status: "idle", message: "", speech: "" }]),
+    AGENTS.map((a) => [a.id, { status: "idle", message: "", speech: "", tag: "" }]),
   );
-  // 当前唯一允许播放动画的员工；同一时刻只可能有一个
   let activeAgent = null;
+  let hovered = null;
   let requirement = "";
+  let selectHandler = null;
 
   const STATUS_TEXT = {
     idle: "待命",
@@ -90,321 +50,431 @@ const Office = (() => {
   };
 
   const STATUS_COLOR = {
-    idle: "#8490b0",
-    working: "#58a6ff",
-    reviewing: "#7ee787",
-    fixing: "#ffd866",
-    completed: "#7ee787",
-    error: "#ff6b81",
+    idle: "#a88a6c",
+    working: "#2c6496",
+    reviewing: "#2f7a3e",
+    fixing: "#b97a12",
+    completed: "#2f7a3e",
+    error: "#9c3a31",
   };
 
-  // 会让人物产生动作的状态
+  const STATUS_FILL = {
+    idle: "#efd39a",
+    working: "#cfe4f5",
+    reviewing: "#d6efcf",
+    fixing: "#fbe3a6",
+    completed: "#d6efcf",
+    error: "#f4cdc6",
+  };
+
   const ACTIVE = new Set(["working", "reviewing", "fixing"]);
-  // 会显示对话气泡的状态
   const SPEAKING = new Set(["working", "reviewing", "fixing", "error"]);
 
   ctx.imageSmoothingEnabled = false;
 
-  function px(x, y, w, h, color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+  function px(x, y, w, h, color, c = ctx) {
+    c.fillStyle = color;
+    c.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
   }
 
-  // ---------- 房间与装饰 ----------
+  // 带 3px 深色描边的像素方框
+  function box(x, y, w, h, fill, border = INK, c = ctx) {
+    px(x, y, w, h, border, c);
+    px(x + 2, y + 2, w - 4, h - 4, fill, c);
+  }
 
-  function drawFloor() {
-    for (let y = 70; y < H; y += 40) {
-      for (let x = 0; x < W; x += 40) {
-        const dark = ((x / 40 + y / 40) | 0) % 2 === 0;
-        px(x, y, 40, 40, dark ? "#232838" : "#1d2230");
-      }
+  // ---------- 静态房间（只绘制一次到离屏画布） ----------
+
+  function drawWall(c) {
+    // 奶油色条纹墙纸 + 木质踢脚线
+    px(0, 0, W, 100, "#f6e3c0", c);
+    for (let x = 0; x < W; x += 24) px(x, 0, 12, 100, "#f1d9ae", c);
+    px(0, 92, W, 12, "#a8693a", c);
+    px(0, 92, W, 3, "#c98a50", c);
+    px(0, 102, W, 2, "#5a3720", c);
+
+    // 两扇白天的窗户（蓝天 + 白云）
+    [36, 650].forEach((wx) => {
+      box(wx, 14, 132, 62, "#9fd3f0", "#7a4a24", c);
+      px(wx + 3, 60, 126, 13, "#bfe3f6", c);
+      px(wx + 64, 14, 4, 62, "#7a4a24", c);
+      px(wx + 16, 26, 26, 8, "#ffffff", c);
+      px(wx + 22, 22, 14, 4, "#ffffff", c);
+      px(wx + 84, 36, 30, 8, "#ffffff", c);
+      px(wx + 92, 32, 12, 4, "#ffffff", c);
+      px(wx - 4, 74, 140, 6, "#c98a50", c);
+    });
+
+    // 原创海报：像素手柄
+    box(186, 16, 56, 62, "#fff8e6", "#7a4a24", c);
+    px(196, 38, 36, 18, "#d2655a", c);
+    px(201, 44, 10, 3, "#fff8e6", c);
+    px(204, 41, 3, 9, "#fff8e6", c);
+    px(220, 42, 4, 4, "#f2b134", c);
+    px(226, 48, 4, 4, "#6fbf73", c);
+    px(196, 62, 36, 3, "#c08548", c);
+
+    // 奖杯置物架
+    px(806, 50, 66, 6, "#7a4a24", c);
+    px(814, 30, 14, 14, "#f2b134", c);
+    px(818, 44, 6, 6, "#b97a12", c);
+    px(836, 34, 10, 16, "#5a9fd4", c);
+    px(852, 28, 12, 22, "#6fbf73", c);
+
+    // 挂钟
+    box(600, 20, 36, 36, "#fff8e6", "#7a4a24", c);
+    px(617, 27, 2, 12, INK, c);
+    px(617, 37, 9, 2, INK, c);
+  }
+
+  function drawFloor(c) {
+    // 横向木地板，错缝排列
+    for (let row = 0, y = 104; y < H; row++, y += 16) {
+      px(0, y, W, 16, row % 2 ? "#d9a86a" : "#d2a062", c);
+      px(0, y + 15, W, 1, "#b98447", c);
+      const offset = (row % 3) * 46;
+      for (let x = offset; x < W; x += 138) px(x, y, 2, 15, "#b98447", c);
+    }
+    // 墙角阴影
+    px(0, 104, W, 6, "rgba(90,55,32,0.18)", c);
+  }
+
+  function drawRunner(c) {
+    // 两排工位之间的走道地毯
+    box(60, 262, 760, 32, "#d97a5f", "#9c4a34", c);
+    for (let x = 76; x < 810; x += 28) {
+      px(x, 274, 8, 8, "#f2c08a", c);
     }
   }
 
-  function drawWall() {
-    px(0, 0, W, 70, "#151a27");
-    px(0, 62, W, 8, "#10141f");
-    px(0, 62, W, 2, "#2b3347");
-
-    // 窗户（夜色 + 星星）
-    [110, 380, 650].forEach((wx) => {
-      px(wx, 14, 120, 44, "#0b1020");
-      px(wx, 14, 120, 4, "#3a4460");
-      px(wx, 54, 120, 4, "#3a4460");
-      px(wx, 14, 4, 44, "#3a4460");
-      px(wx + 116, 14, 4, 44, "#3a4460");
-      px(wx + 24, 24, 3, 3, "#e8ecff");
-      px(wx + 62, 34, 2, 2, "#ffe9a3");
-      px(wx + 92, 22, 2, 2, "#e8ecff");
-    });
-
-    // 左侧海报
-    px(20, 10, 66, 46, "#3a4460");
-    px(23, 13, 60, 40, "#1f2536");
-    px(38, 24, 10, 7, "#7ee787");
-    px(48, 24, 10, 7, "#58a6ff");
-    px(30, 37, 46, 3, "#3a4460");
-    px(34, 44, 34, 3, "#3a4460");
-
-    // 任务牌左侧的置物架
-    px(238, 34, 64, 5, "#6b4b2a");
-    px(238, 34, 64, 2, "#8a6338");
-    ["#ff6b81", "#ffd866", "#7ee787", "#58a6ff", "#c792ea"].forEach(
-      (color, index) => px(242 + index * 11, 20, 8, 14, color),
-    );
-
-    // 任务牌右侧的白板与便签
-    px(580, 10, 62, 46, "#3a4460");
-    px(583, 13, 56, 40, "#dfe6f5");
-    px(590, 20, 14, 10, "#ffd866");
-    px(607, 20, 14, 10, "#7ee787");
-    px(590, 34, 31, 3, "#3a4460");
-    px(590, 41, 22, 3, "#3a4460");
-
-    // 右侧挂钟
-    px(796, 12, 36, 36, "#3a4460");
-    px(799, 15, 30, 30, "#0b1020");
-    px(813, 20, 2, 10, "#e8ecff");
-    px(813, 28, 8, 2, "#e8ecff");
-    px(813, 15, 3, 3, "#ffd866");
-  }
-
-  function drawRug() {
-    px(225, 252, 230, 114, "#2a3247");
-    px(232, 259, 216, 100, "#323b52");
-    // 菱形花纹
-    [282, 340, 398].forEach((x) => {
-      px(x, 292, 12, 12, "#3e4a66");
-      px(x + 3, 295, 6, 6, "#2a3247");
-    });
-  }
-
-  function drawCat() {
-    // 睡在地毯上的猫（静态装饰）
-    px(330, 318, 46, 16, "#e0a45c");
-    px(330, 318, 46, 4, "#f0b874");
-    px(368, 312, 18, 16, "#e0a45c");
-    px(369, 307, 5, 6, "#e0a45c");
-    px(380, 307, 5, 6, "#e0a45c");
-    px(318, 324, 14, 4, "#e0a45c");
-    px(314, 318, 6, 8, "#e0a45c");
-    px(338, 322, 3, 10, "#c98a45");
-    px(346, 322, 3, 10, "#c98a45");
-    px(374, 318, 3, 2, "#1b1f2b");
-    px(381, 318, 3, 2, "#1b1f2b");
-  }
-
-  function drawBookshelf() {
-    px(8, 96, 46, 112, "#3a2a1a");
-    px(8, 96, 46, 4, "#6b4b2a");
-    [132, 168, 204].forEach((shelfY, row) => {
-      px(8, shelfY, 46, 4, "#6b4b2a");
-      const colors = ["#ff6b81", "#ffd866", "#7ee787", "#58a6ff", "#c792ea"];
-      for (let i = 0; i < 5; i++) {
-        const color = colors[(row + i) % colors.length];
-        px(11 + i * 8, shelfY - 16 + (i % 2) * 2, 6, 14, color);
+  function drawBookshelf(c) {
+    box(4, 112, 42, 108, "#a8693a", "#5a3720", c);
+    const colors = ["#d2655a", "#f2b134", "#6fbf73", "#5a9fd4", "#b07fd6"];
+    [146, 180, 214].forEach((shelfY, row) => {
+      px(6, shelfY, 38, 4, "#5a3720", c);
+      for (let i = 0; i < 4; i++) {
+        px(9 + i * 9, shelfY - 22 + (i % 2) * 3, 7, 22 - (i % 2) * 3, colors[(row + i) % 5], c);
       }
     });
   }
 
-  function drawCooler() {
-    // 饮水机
-    px(834, 108, 28, 34, "#9fd3ff");
-    px(838, 104, 20, 8, "#cfeaff");
-    px(826, 142, 44, 56, "#c9d4e8");
-    px(826, 142, 44, 4, "#eef3ff");
-    px(834, 158, 10, 6, "#58a6ff");
-    px(852, 158, 10, 6, "#ff6b81");
-    px(832, 196, 10, 8, "#22263a");
-    px(854, 196, 10, 8, "#22263a");
+  function drawCooler(c) {
+    px(842, 112, 26, 30, "#9fd3f0", c);
+    px(846, 108, 18, 6, "#cdeaf8", c);
+    box(834, 140, 42, 70, "#eef1f4", "#5a3720", c);
+    px(842, 156, 8, 6, "#5a9fd4", c);
+    px(860, 156, 8, 6, "#d2655a", c);
   }
 
-  function drawFloorLamp() {
-    // 放在两列办公桌之间的过道，避免和六人布局的桌子重叠
-    const lx = 560;
-    px(lx + 18, 250, 4, 164, "#3a4460");
-    px(lx, 242, 40, 10, "#ffd866");
-    px(lx + 4, 252, 32, 2, "#c9a83f");
-    px(lx + 10, 414, 16, 6, "#2b3145");
+  function drawPlant(x, y, c) {
+    px(x + 6, y + 30, 26, 22, "#a8693a", c);
+    px(x + 4, y + 28, 30, 5, "#c98a50", c);
+    px(x + 16, y + 4, 6, 26, "#2f7a3e", c);
+    px(x + 2, y + 8, 14, 10, "#6fbf73", c);
+    px(x + 22, y + 2, 14, 10, "#4f9e57", c);
+    px(x + 8, y - 6, 12, 10, "#6fbf73", c);
+    px(x + 18, y + 16, 12, 8, "#4f9e57", c);
   }
 
-  function drawPlant(x, y) {
-    px(x, y + 20, 26, 18, "#6b4b2a");
-    px(x, y + 20, 26, 4, "#8a6338");
-    px(x + 10, y - 6, 6, 26, "#255c2c");
-    px(x, y + 2, 12, 8, "#2f7a3a");
-    px(x + 16, y - 2, 10, 8, "#255c2c");
-    px(x + 2, y - 8, 10, 8, "#2f7a3a");
+  function drawArcade(c) {
+    // 走道上的原创小街机（游戏工作室的标志物）
+    const x = 566;
+    const y = 232;
+    box(x, y, 40, 62, "#d2655a", "#5a3720", c);
+    px(x + 6, y + 8, 28, 20, "#2a1d14", c);
+    px(x + 10, y + 12, 6, 4, "#6fbf73", c);
+    px(x + 20, y + 18, 8, 4, "#f2b134", c);
+    px(x + 4, y + 32, 32, 8, "#f6cfa4", c);
+    px(x + 10, y + 34, 4, 4, INK, c);
+    px(x + 24, y + 34, 4, 4, "#5a9fd4", c);
   }
 
-  function drawBin() {
-    px(643, 444, 36, 6, "#3a4460");
-    px(646, 450, 30, 34, "#2b3145");
-    px(652, 458, 2, 22, "#1b1f2b");
-    px(662, 458, 2, 22, "#1b1f2b");
-    px(672, 458, 2, 22, "#1b1f2b");
+  function drawCat(c) {
+    // 睡在走道地毯上的猫（静态装饰）
+    const x = 296;
+    const y = 268;
+    px(x, y + 8, 40, 14, "#e8a35c", c);
+    px(x + 4, y + 8, 30, 3, "#f6c38a", c);
+    px(x + 34, y + 2, 16, 16, "#e8a35c", c);
+    px(x + 35, y - 2, 4, 5, "#e8a35c", c);
+    px(x + 45, y - 2, 4, 5, "#e8a35c", c);
+    px(x + 38, y + 8, 3, 2, INK, c);
+    px(x + 44, y + 8, 3, 2, INK, c);
+    px(x - 10, y + 16, 12, 4, "#e8a35c", c);
+    px(x + 10, y + 10, 3, 10, "#c97f3e", c);
+    px(x + 20, y + 10, 3, 10, "#c97f3e", c);
   }
+
+  function drawSofa(c) {
+    // 底部休息区：沙发 + 茶几
+    box(330, 474, 150, 40, "#5a9fd4", "#2c4f73", c);
+    px(334, 478, 142, 10, "#7fb6e0", c);
+    box(322, 482, 16, 34, "#4a86b8", "#2c4f73", c);
+    box(472, 482, 16, 34, "#4a86b8", "#2c4f73", c);
+    box(540, 486, 64, 22, "#c98a50", "#5a3720", c);
+    px(552, 480, 10, 8, "#fff8e6", c);
+    px(578, 482, 14, 6, "#d2655a", c);
+  }
+
+  const bg = document.createElement("canvas");
+  bg.width = W;
+  bg.height = H;
+  (() => {
+    const c = bg.getContext("2d");
+    c.imageSmoothingEnabled = false;
+    drawWall(c);
+    drawFloor(c);
+    drawRunner(c);
+    drawBookshelf(c);
+    drawCooler(c);
+    drawArcade(c);
+    drawCat(c);
+    drawSofa(c);
+    drawPlant(6, 452, c);
+    drawPlant(836, 452, c);
+    drawPlant(250, 444, c);
+  })();
+
+  // ---------- 动态元素 ----------
 
   function drawTaskBoard() {
-    if (!requirement) return;
-    px(W / 2 - 130, 16, 260, 30, "#1f2536");
-    px(W / 2 - 130, 16, 260, 2, "#3a4460");
-    px(W / 2 - 130, 44, 260, 2, "#3a4460");
-    ctx.fillStyle = "#e8ecff";
-    ctx.font = "12px ui-monospace, monospace";
-    ctx.textAlign = "center";
-    // 按实测宽度截断，避免长需求溢出任务牌
-    const full = `任务：${requirement}`;
+    // 墙上白板：显示当前任务需求
+    box(276, 12, 300, 66, "#fdfdf8", "#7a4a24");
+    px(279, 70, 294, 5, "#e6e0d0");
+    px(290, 72, 18, 4, "#d2655a");
+    px(312, 72, 18, 4, "#5a9fd4");
+    ctx.fillStyle = INK;
+    ctx.textAlign = "left";
+    ctx.font = `bold 11px ${FONT}`;
+    ctx.fillText("今日任务", 288, 30);
+    ctx.font = `12px ${FONT}`;
+    // 按实测宽度截断，避免长需求溢出白板
+    const full = requirement || "等待 CEO 发布任务…";
     let text = full;
-    while (text.length > 4 && ctx.measureText(text).width > 238) {
+    while (text.length > 2 && ctx.measureText(text).width > 274) {
       text = text.slice(0, -1);
     }
     if (text !== full) text = text.slice(0, -1) + "…";
-    ctx.fillText(text, W / 2, 36);
+    ctx.fillStyle = requirement ? INK : "#a88a6c";
+    ctx.fillText(text, 288, 52);
   }
 
-  function drawRoom() {
-    drawFloor();
-    drawWall();
-    drawRug();
-    drawBookshelf();
-    drawCooler();
-    drawFloorLamp();
-    drawPlant(24, 428);
-    drawPlant(824, 420);
-    drawBin();
-    drawCat();
-    drawTaskBoard();
-  }
-
-  // ---------- 办公桌与人物 ----------
-
-  function drawDesk(agent, phase) {
+  function drawStation(agent, phase) {
     const { x, y } = agent;
     const st = state.get(agent.id);
     const focus = activeAgent === agent.id && ACTIVE.has(st.status);
 
-    // 地面投影
-    px(x - 96, y + 74, 192, 6, "#0a0d14");
+    // 工位地垫：焦点员工按状态着色，悬停时金色描边
+    const matBorder = hovered === agent.id ? "#f2b134" : "#b98447";
+    box(x - 90, y - 72, 180, 144, focus ? STATUS_FILL[st.status] : "#e3bd84", matBorder);
 
-    // 桌腿与桌面
-    px(x - 84, y + 40, 10, 40, "#2b1f13");
-    px(x + 74, y + 40, 10, 40, "#2b1f13");
-    px(x - 94, y + 26, 188, 16, "#6b4b2a");
-    px(x - 94, y + 26, 188, 4, "#8a6338");
-    px(x - 94, y + 38, 188, 4, "#4a3219");
-
-    // 显示器：员工面向桌子，观众看到的是背面
-    px(x - 66, y - 30, 74, 56, "#3a4460");
-    px(x - 62, y - 26, 66, 44, "#141a26");
-    for (let i = 0; i < 4; i++) px(x - 50, y - 18 + i * 8, 30, 2, "#222a3a");
-    px(x + 4, y + 10, 4, 4, focus ? "#7ee787" : "#3a4460");
-    px(x - 10, y + 26, 24, 4, "#2b3145");
-    px(x - 16, y + 30, 36, 3, "#222a3a");
-
-    // 工作时的屏幕背光
-    if (focus) {
-      ctx.globalAlpha = 0.1 + 0.06 * Math.sin(phase * 5);
-      px(x - 74, y - 38, 90, 68, STATUS_COLOR[st.status]);
-      ctx.globalAlpha = 1;
-    }
-
-    // 键盘与鼠标
-    px(x + 22, y + 28, 54, 10, "#2c3444");
-    px(x + 26, y + 30, 46, 4, "#455268");
-    px(x + 80, y + 30, 8, 10, "#2c3444");
-
-    // 台灯
-    px(x - 88, y - 2, 4, 30, "#3a4460");
-    px(x - 96, y - 10, 20, 8, "#ffd866");
-    px(x - 96, y - 10, 20, 2, "#ffe9a3");
-    if (focus) {
-      ctx.globalAlpha = 0.1;
-      px(x - 102, y - 2, 34, 34, "#ffd866");
-      ctx.globalAlpha = 1;
-    }
-
-    // 文件、咖啡杯与桌面小盆栽
-    px(x + 64, y - 2, 14, 12, "#dfe6f5");
-    px(x + 66, y, 10, 2, "#3a4460");
-    px(x + 66, y + 4, 8, 2, "#3a4460");
-    px(x + 78, y + 4, 8, 10, "#3a4460");
-    px(x - 84, y + 8, 12, 10, "#6b4b2a");
-    px(x - 82, y - 2, 8, 10, "#2f7a3a");
-  }
-
-  function drawChair(agent) {
-    const { x, y } = agent;
-    // 椅背两侧会从人物身后露出来
-    px(x - 28, y + 30, 56, 30, "#232a3c");
-    px(x - 28, y + 30, 56, 4, "#313a50");
-    // 坐垫
-    px(x - 30, y + 58, 60, 8, "#2b3145");
-    px(x - 30, y + 58, 60, 2, "#3a4460");
-    // 椅腿
-    px(x - 26, y + 66, 8, 20, "#1d2230");
-    px(x + 18, y + 66, 8, 20, "#1d2230");
+    // 椅背
+    box(x - 24, y - 60, 48, 56, agent.dark, INK);
+    px(x - 20, y - 56, 40, 4, agent.color);
   }
 
   function drawCharacter(agent, phase) {
     const { x, y } = agent;
     const st = state.get(agent.id);
-    // 只有当前焦点员工会动；其余人完全静止
     const focus = activeAgent === agent.id && ACTIVE.has(st.status);
-    const bob = focus ? Math.sin(phase * 4.5) * 1.5 : 0;
-    const shake =
-      focus && st.status === "fixing" ? Math.sin(phase * 24) * 1.5 : 0;
-    const cx = Math.round(x + shake);
-    const cy = y + 14 + bob; // 肩部基准
+    const still = reduceMotion.matches;
+    const bob = focus && !still ? Math.round(Math.sin(phase * 6) * 1.5) : 0;
+    const shake = focus && st.status === "fixing" && !still ? Math.round(Math.sin(phase * 22) * 1.5) : 0;
+    const cx = x + shake;
+    const top = y - 64 + bob;
 
-    // 腿与鞋（坐在椅子前沿）
-    px(cx - 16, y + 60, 12, 24, "#2b3348");
-    px(cx + 4, y + 60, 12, 24, "#2b3348");
-    px(cx - 18, y + 84, 16, 6, "#1b1f2b");
-    px(cx + 2, y + 84, 16, 6, "#1b1f2b");
+    // 身体（衬衫 + 领口）
+    px(cx - 17, top + 30, 34, 36, INK);
+    px(cx - 15, top + 32, 30, 34, agent.color);
+    px(cx - 4, top + 32, 8, 6, "#fff8e6");
+    px(cx - 15, top + 54, 30, 4, agent.dark);
 
-    // 背部躯干
-    px(cx - 20, cy, 40, 44, agent.color);
-    px(cx - 20, cy, 40, 4, "#ffffff22");
-    px(cx - 20, cy + 40, 40, 4, "#00000022");
-    px(cx - 2, cy + 6, 4, 30, "#00000018");
+    // 头部：原创 Q 版大头
+    drawHead(ctx, cx - 15, top, LOOKS[agent.talent], {
+      blink: !still && (Math.floor(phase * 10 + agent.x) % 37 === 0),
+      sad: st.status === "error",
+      happy: st.status === "completed",
+    });
 
-    // 手臂：工作时左右交替敲键盘
-    const arm = focus ? Math.sin(phase * 10) * 3 : 0;
-    px(cx - 27, cy + 8 + arm, 7, 24, agent.color);
-    px(cx + 20, cy + 8 - arm, 7, 24, agent.color);
-    px(cx - 27, cy + 30 + arm, 7, 6, agent.skin);
-    px(cx + 20, cy + 30 - arm, 7, 6, agent.skin);
+    // 手：工作时左右交替敲键盘
+    const arm = focus && !still ? Math.round(Math.sin(phase * 14) * 2) : 0;
+    px(cx - 26, y - 6 + arm, 10, 8, INK);
+    px(cx - 24, y - 4 + arm, 6, 4, SKIN);
+    px(cx + 16, y - 6 - arm, 10, 8, INK);
+    px(cx + 18, y - 4 - arm, 6, 4, SKIN);
+  }
 
-    // 脖子
-    px(cx - 4, cy - 8, 8, 8, agent.skin);
-
-    // 后脑勺：背对观众，不画五官
-    px(cx - 11, cy - 28, 22, 22, agent.skin);
-    px(cx - 11, cy - 30, 22, 12, agent.hair);
-    px(cx - 13, cy - 22, 4, 16, agent.hair);
-    px(cx + 9, cy - 22, 4, 16, agent.hair);
-    px(cx - 2, cy - 18, 3, 3, "#00000022");
-
-    // 耳机，强调背对视角
-    px(cx - 15, cy - 26, 30, 4, "#1b1f2b");
-    px(cx - 16, cy - 22, 5, 12, "#2b3145");
-    px(cx + 11, cy - 22, 5, 12, "#2b3145");
-
-    // 状态装饰
-    if (st.status === "error") {
-      px(cx - 2, cy - 46, 4, 10, "#ff6b81");
-      px(cx - 2, cy - 32, 4, 4, "#ff6b81");
+  // 头像绘制（办公室与员工档案卡共用），尺寸 30×30
+  function drawHead(c, hx, hy, look, mood = {}) {
+    look = look || LOOKS.coo;
+    px(hx, hy + 2, 30, 28, INK, c);
+    px(hx + 2, hy + 4, 26, 24, SKIN, c);
+    px(hx + 2, hy + 24, 26, 4, SKIN_SHADE, c);
+    // 头发
+    px(hx, hy, 30, 10, INK, c);
+    px(hx + 2, hy + 2, 26, 8, look.hair, c);
+    px(hx + 2, hy + 10, 5, 8, look.hair, c);
+    px(hx + 23, hy + 10, 5, 8, look.hair, c);
+    px(hx + 12, hy + 10, 8, 3, look.hair, c);
+    // 眼睛
+    if (mood.blink) {
+      px(hx + 8, hy + 16, 4, 1, INK, c);
+      px(hx + 18, hy + 16, 4, 1, INK, c);
+    } else if (mood.happy) {
+      px(hx + 8, hy + 15, 4, 2, INK, c);
+      px(hx + 18, hy + 15, 4, 2, INK, c);
+    } else {
+      px(hx + 9, hy + 14, 3, 4, INK, c);
+      px(hx + 18, hy + 14, 3, 4, INK, c);
     }
+    if (look.glasses) {
+      px(hx + 6, hy + 12, 8, 2, INK, c);
+      px(hx + 16, hy + 12, 8, 2, INK, c);
+      px(hx + 14, hy + 14, 2, 1, INK, c);
+    }
+    // 腮红与嘴
+    px(hx + 5, hy + 20, 4, 2, "#f29a8a", c);
+    px(hx + 21, hy + 20, 4, 2, "#f29a8a", c);
+    if (mood.sad) px(hx + 13, hy + 23, 4, 1, INK, c);
+    else px(hx + 13, hy + 22, 4, 2, "#b4552e", c);
+  }
 
-    // 姓名与状态（放在椅子下方，避开下一排的气泡）
+  // 每个角色桌上的原创道具，帮助一眼认出岗位
+  const DESK_ITEMS = {
+    coo(x, y) {
+      box(x, y - 22, 22, 26, "#fff8e6", "#7a4a24");
+      px(x + 8, y - 25, 6, 4, "#a8a8a8");
+      px(x + 5, y - 14, 12, 2, "#a88a6c");
+      px(x + 5, y - 9, 9, 2, "#a88a6c");
+    },
+    creative(x, y) {
+      box(x, y - 12, 28, 16, "#fff8e6", INK);
+      px(x + 5, y - 8, 4, 4, "#d2655a");
+      px(x + 12, y - 8, 4, 4, "#f2b134");
+      px(x + 19, y - 8, 4, 4, "#5a9fd4");
+      px(x + 24, y - 30, 3, 20, "#7a4a24");
+      px(x + 23, y - 34, 5, 5, "#b07fd6");
+    },
+    delivery(x, y) {
+      box(x, y - 24, 30, 28, "#fff8e6", INK);
+      px(x + 2, y - 22, 26, 6, "#d2655a");
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) px(x + 5 + i * 8, y - 12 + j * 7, 5, 4, "#a88a6c");
+    },
+    engineer(x, y) {
+      px(x, y - 18, 14, 18, INK);
+      px(x + 2, y - 16, 10, 14, "#fff8e6");
+      px(x + 2, y - 16, 10, 4, "#7a4a24");
+      px(x + 12, y - 12, 5, 6, INK);
+      px(x + 20, y - 6, 18, 6, "#c08548");
+    },
+    reviewer(x, y) {
+      box(x, y - 24, 22, 28, "#fff8e6", INK);
+      px(x + 5, y - 17, 4, 4, "#6fbf73");
+      px(x + 5, y - 9, 4, 4, "#6fbf73");
+      px(x + 11, y - 16, 7, 2, "#a88a6c");
+      px(x + 11, y - 8, 7, 2, "#a88a6c");
+      box(x + 22, y - 18, 14, 14, "#cdeaf8", INK);
+      px(x + 34, y - 6, 4, 8, INK);
+    },
+    marketer(x, y) {
+      px(x, y - 18, 10, 12, INK);
+      px(x + 2, y - 16, 6, 8, "#f2b134");
+      px(x + 8, y - 22, 6, 20, INK);
+      px(x + 10, y - 20, 4, 16, "#d2655a");
+      px(x + 20, y - 26, 16, 26, "#b07fd6");
+      px(x + 23, y - 22, 10, 4, "#fff8e6");
+    },
+  };
+
+  function drawDesk(agent, phase) {
+    const { x, y } = agent;
+    const st = state.get(agent.id);
+    const focus = activeAgent === agent.id && ACTIVE.has(st.status);
+    const still = reduceMotion.matches;
+
+    // 显示器（放在桌面左侧，屏幕朝向观众）
+    box(x - 74, y - 44, 44, 36, "#3a2a20", INK);
+    const screen = focus ? STATUS_FILL[st.status] : "#4a5a6a";
+    px(x - 70, y - 40, 36, 28, screen);
+    if (focus) {
+      // 屏幕上滚动的代码行，只在后端判定为工作状态时出现
+      const scroll = still ? 0 : Math.floor(phase * 6) % 4;
+      for (let i = 0; i < 4; i++) {
+        const w = [24, 16, 28, 12][(i + scroll) % 4];
+        px(x - 66, y - 36 + i * 6, w, 3, STATUS_COLOR[st.status]);
+      }
+    } else {
+      px(x - 66, y - 36, 8, 3, "#6a7a8a");
+    }
+    px(x - 56, y - 8, 8, 6, INK);
+
+    // 桌面与前挡板
+    box(x - 84, y - 4, 168, 16, "#dca464", INK);
+    px(x - 81, y - 1, 162, 3, "#f0c48a");
+    box(x - 80, y + 10, 160, 36, "#a8693a", INK);
+    px(x + 52, y + 18, 22, 20, "#8f5530");
+    px(x + 60, y + 26, 6, 3, "#f2b134");
+
+    // 键盘
+    px(x - 16, y - 2, 32, 6, "#5a4636");
+    px(x - 14, y - 1, 28, 2, "#8a7666");
+
+    (DESK_ITEMS[agent.id] || (() => {}))(x + 38, y - 2);
+
+    // 名牌：名字 + 岗位
+    box(x - 76, y + 16, 124, 22, "#fff8e6", INK);
     ctx.textAlign = "center";
-    ctx.font = "bold 11px ui-monospace, monospace";
-    ctx.fillStyle = "#e8ecff";
-    ctx.fillText(`${agent.name} · ${agent.role}`, x, y + 106);
-    ctx.font = "10px ui-monospace, monospace";
-    ctx.fillStyle = STATUS_COLOR[st.status];
-    ctx.fillText(STATUS_TEXT[st.status] || st.status, x, y + 120);
+    ctx.fillStyle = INK;
+    ctx.font = `bold 10px ${FONT}`;
+    ctx.fillText(`${agent.name} ${agent.role}`, x - 14, y + 31);
+
+    // 状态牌
+    const label = STATUS_TEXT[st.status] || st.status;
+    ctx.font = `bold 11px ${FONT}`;
+    const tw = Math.ceil(ctx.measureText(label).width) + 22;
+    box(x - tw / 2, y + 48, tw, 18, STATUS_FILL[st.status] || "#efd39a", STATUS_COLOR[st.status] || INK);
+    px(x - tw / 2 + 5, y + 54, 6, 6, STATUS_COLOR[st.status] || INK);
+    ctx.fillStyle = INK;
+    ctx.textAlign = "left";
+    ctx.fillText(label, x - tw / 2 + 14, y + 61);
+
+    // 岗位标签（如 Engineer 当前默认角色），数据来自 /api/employees
+    if (st.tag) {
+      ctx.font = `bold 10px ${FONT}`;
+      const gw = Math.ceil(ctx.measureText(st.tag).width) + 10;
+      box(x + 86 - gw, y - 68, gw, 16, "#f2b134", INK);
+      ctx.fillStyle = INK;
+      ctx.fillText(st.tag, x + 91 - gw, y - 56);
+    }
+  }
+
+  // 头顶状态图标：只反映后端状态，动画只是装饰
+  function drawStatusIcon(agent, phase) {
+    const st = state.get(agent.id);
+    const still = reduceMotion.matches;
+    const x = agent.x + 22;
+    const y = agent.y - 84 + (still ? 0 : Math.round(Math.sin(phase * 3) * 1));
+    const focus = activeAgent === agent.id;
+    if (st.status === "working" && focus) {
+      box(x, y, 26, 14, "#fff8e6", INK);
+      const n = still ? 3 : (Math.floor(phase * 3) % 3) + 1;
+      for (let i = 0; i < n; i++) px(x + 5 + i * 6, y + 6, 3, 3, STATUS_COLOR.working);
+    } else if (st.status === "reviewing" && focus) {
+      box(x, y - 2, 14, 14, "#cdeaf8", INK);
+      px(x + 12, y + 10, 4, 6, INK);
+    } else if (st.status === "fixing" && focus) {
+      px(x, y, 18, 4, "#7d7d7d");
+      px(x + 14, y - 3, 6, 10, "#7d7d7d");
+      px(x - 6, y + 10, 4, 6, "#5a9fd4");
+    } else if (st.status === "completed") {
+      px(x + 5, y, 4, 14, "#f2b134");
+      px(x, y + 5, 14, 4, "#f2b134");
+      px(x + 3, y + 3, 8, 8, "#f2b134");
+    } else if (st.status === "error") {
+      box(x, y - 4, 14, 20, "#d2655a", INK);
+      px(x + 5, y, 4, 8, "#fff8e6");
+      px(x + 5, y + 10, 4, 3, "#fff8e6");
+    }
   }
 
   function wrap(text, max) {
@@ -429,42 +499,83 @@ const Office = (() => {
     const text = st.speech || (SPEAKING.has(st.status) ? st.message : "");
     if (!text) return;
     const lines = wrap(text, 13);
-    const boxW = Math.max(...lines.map((l) => [...l].length)) * 12 + 16;
+    const boxW = Math.max(...lines.map((l) => [...l].length)) * 12 + 18;
     const boxH = lines.length * 15 + 12;
     const bx = Math.min(Math.max(agent.x - boxW / 2, 4), W - boxW - 4);
-    const by = agent.y - 92 - (lines.length - 1) * 6;
+    const by = agent.y - 90 - boxH;
+    const accent = STATUS_COLOR[st.status] || INK;
 
-    px(bx + 2, by + 2, boxW, boxH, "#05060a");
-    px(bx, by, boxW, boxH, "#1f2536");
-    px(bx, by, boxW, 2, STATUS_COLOR[st.status]);
-    px(bx, by + boxH - 2, boxW, 2, STATUS_COLOR[st.status]);
-    px(bx, by, 2, boxH, STATUS_COLOR[st.status]);
-    px(bx + boxW - 2, by, 2, boxH, STATUS_COLOR[st.status]);
+    px(bx + 3, by + 3, boxW, boxH, "rgba(69,41,26,0.35)");
+    box(bx, by, boxW, boxH, "#fffdf5", INK);
+    px(bx + 2, by + 2, 4, boxH - 4, accent);
     // 小尾巴
-    px(bx + boxW / 2 - 4, by + boxH, 8, 4, STATUS_COLOR[st.status]);
-    px(bx + boxW / 2 - 4, by + boxH + 4, 4, 3, STATUS_COLOR[st.status]);
+    const tx = Math.min(Math.max(agent.x - 4, bx + 8), bx + boxW - 16);
+    px(tx, by + boxH - 2, 10, 4, "#fffdf5");
+    px(tx - 2, by + boxH - 2, 2, 6, INK);
+    px(tx + 10, by + boxH - 2, 2, 4, INK);
+    px(tx, by + boxH + 2, 6, 2, INK);
+    px(tx + 6, by + boxH + 2, 4, 2, INK);
 
-    ctx.fillStyle = "#e8ecff";
-    ctx.font = "11px ui-monospace, monospace";
+    ctx.fillStyle = INK;
+    ctx.font = `11px ${FONT}`;
     ctx.textAlign = "left";
-    lines.forEach((line, i) => ctx.fillText(line, bx + 8, by + 16 + i * 15));
+    lines.forEach((line, i) => ctx.fillText(line, bx + 10, by + 17 + i * 15));
   }
 
   function frame(ts) {
     const phase = ts / 1000;
-    ctx.clearRect(0, 0, W, H);
-    drawRoom();
-    // 按 y 排序，保证下排角色遮挡关系正确
+    ctx.drawImage(bg, 0, 0);
+    drawTaskBoard();
+    // 按 y 排序，保证下排遮挡关系正确
     [...AGENTS]
       .sort((a, b) => a.y - b.y)
       .forEach((agent) => {
-        drawDesk(agent, phase);
-        drawChair(agent);
+        drawStation(agent, phase);
         drawCharacter(agent, phase);
+        drawDesk(agent, phase);
+        drawStatusIcon(agent, phase);
       });
     AGENTS.forEach(drawBubble);
     requestAnimationFrame(frame);
   }
+
+  // ---------- 点击热区：由 AGENTS 坐标生成，与绘制位置一致 ----------
+
+  function buildHotspots() {
+    const layer = document.getElementById("office-hotspots");
+    if (!layer) return;
+    layer.innerHTML = "";
+    AGENTS.forEach((agent) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "hotspot";
+      button.dataset.agent = agent.id;
+      button.style.left = `${((agent.x - HIT.left) / W) * 100}%`;
+      button.style.top = `${((agent.y - HIT.top) / H) * 100}%`;
+      button.style.width = `${(HIT.width / W) * 100}%`;
+      button.style.height = `${(HIT.height / H) * 100}%`;
+      const label =
+        agent.id === "engineer"
+          ? `${agent.name} · ${agent.role}：查看档案并切换主力/备用工程师`
+          : `${agent.name} · ${agent.role}：查看员工档案`;
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      button.addEventListener("click", () => {
+        if (selectHandler) selectHandler(agent.id, agent.talent);
+      });
+      const enter = () => (hovered = agent.id);
+      const leave = () => {
+        if (hovered === agent.id) hovered = null;
+      };
+      button.addEventListener("mouseenter", enter);
+      button.addEventListener("focus", enter);
+      button.addEventListener("mouseleave", leave);
+      button.addEventListener("blur", leave);
+      layer.appendChild(button);
+    });
+  }
+
+  // ---------- 对外接口 ----------
 
   function setAgent(agentId, status, message) {
     const entry = state.get(agentId);
@@ -489,6 +600,12 @@ const Office = (() => {
     entry.speech = (text || "").trim();
   }
 
+  // 工位标签（纯展示），例如 Engineer 岗位当前默认启用的角色
+  function setTag(agentId, text) {
+    const entry = state.get(agentId);
+    if (entry) entry.tag = (text || "").trim();
+  }
+
   function resetAgents() {
     state.forEach((entry) => {
       entry.status = "idle";
@@ -498,7 +615,29 @@ const Office = (() => {
     activeAgent = null;
   }
 
+  function onSelect(handler) {
+    selectHandler = handler;
+  }
+
+  // 在任意 canvas 上绘制员工头像（员工档案卡使用）
+  function drawPortrait(target, talentName) {
+    const c = target.getContext("2d");
+    const look = LOOKS[talentName] || LOOKS.coo;
+    c.imageSmoothingEnabled = false;
+    c.clearRect(0, 0, target.width, target.height);
+    const s = target.width / 32;
+    c.save();
+    c.scale(s, s);
+    px(0, 0, 32, 32, "#f7e3b5", c);
+    px(5, 24, 22, 8, INK, c);
+    px(7, 26, 18, 6, look.color, c);
+    px(13, 26, 6, 3, "#fff8e6", c);
+    drawHead(c, 1, -1, look, {});
+    c.restore();
+  }
+
+  buildHotspots();
   requestAnimationFrame(frame);
 
-  return { setAgent, setRequirement, setSpeech, resetAgents };
+  return { setAgent, setRequirement, setSpeech, setTag, resetAgents, onSelect, drawPortrait };
 })();

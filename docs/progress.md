@@ -10,6 +10,20 @@
 
 ---
 
+## UI 重设计：暖色像素经营风格（2026-10-24，未提交）
+
+只改界面外观与控件位置，不改业务逻辑、API、WebSocket 与存储格式。逐控件迁移记录见 [ui-layout-migration.md](ui-layout-migration.md)。
+
+- 视觉：Design Tokens（奶油 / 暖棕 / 木色 / 浅绿 / 金黄 / 低饱和红 / 深棕文字），木质 HUD 顶栏，面板硬边框与阶梯阴影，文件夹式标签，街机屏风格预览框。
+- 布局：CEO 表单从顶栏移到办公室下方的「CEO 指令台」；右侧改名为「游戏工作台」，标签文字改为中文（`data-tab` 不变）；底部事件条改名为「公司广播」。
+- 办公室：`office.js` 重绘为原创的暖色像素办公室（880×520 逻辑尺寸不变），新增 6 个与绘制坐标一致的工位热区，点击会打开「员工」标签并选中对应员工。
+- 员工档案：新增像素头像、「当前任务实际」（只读 `talent_versions`）和切换成功提示。
+- 响应式：1440 / 980 / 640 三个断点；`prefers-reduced-motion` 时关闭 CSS 动画与 Canvas 动画。
+- 验证：`uv run pytest -q` → 122 passed；浏览器回归 19 项 PASS，1 项 NOT_APPLICABLE（Talent 提案前端不存在）。
+- 截图：[screenshots/ui-reskin/](screenshots/ui-reskin/)（before-* 为改造前，after-* 为改造后）。
+
+---
+
 ## 阶段 10：一键启动与线上部署（已完成代码与文档，未实际部署）
 
 **日期**：2026-10-24

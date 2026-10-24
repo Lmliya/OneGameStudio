@@ -28,6 +28,9 @@ const state = {
   mock: false,
 };
 
+// 只读访问当前任务快照（员工档案卡展示“当前任务实际 Talent”用）
+window.OGS = { getTask: () => state.task };
+
 const STATUS_CLASS = {
   pending: "badge-wait",
   planning: "badge-work",
@@ -754,7 +757,7 @@ function renderMarketing() {
     </div>
     <div class="block">
       <h3>Slogan</h3>
-      <div class="block-body"><span style="color:#7ee787">${esc(kit.slogan)}</span></div>
+      <div class="block-body"><span style="color:var(--accent);font-weight:700">${esc(kit.slogan)}</span></div>
     </div>
     <div class="block">
       <h3>宣发文案</h3>

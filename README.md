@@ -3,11 +3,11 @@
 一个可本地运行的 AI 游戏开发工作室：6 个岗位的 Agent 协作、像素办公室实时状态、
 机械门禁与 AI 审查、不可变游戏版本、Talent 自进化，以及 Demo / Live 双模式。
 
-![Demo 模式总览](docs/screenshots/demo-overview.png)
+![Demo 模式总览](docs/screenshots/ui-reskin/after-desktop.png)
 
-_上：Demo 模式总览；下：Employee 面板与角色任务记录。_
+_上：Demo 模式总览（像素办公室 + CEO 指令台 + 游戏工作台）；下：员工档案卡。_
 
-![Employee 面板](docs/screenshots/employee-detail.png)
+![员工面板](docs/screenshots/ui-reskin/after-employee.png)
 
 ## 当前状态
 
@@ -28,7 +28,7 @@ _上：Demo 模式总览；下：Employee 面板与角色任务记录。_
 - **质量保障**：机械门禁（Playwright）+ AI 审查 + 修复循环 + 预算/并发/超时限制。
 - **游戏版本**：不可变版本、父版本分支、版本切换、最终版本指针。
 - **Talent 自进化**：版本、经验、提案、回归评估、用户批准与回滚；Evolution UI 目前只在 API 层保留。
-- **像素办公室**：6 个工位，状态来自真实事件流，WebSocket 断线自动重连并恢复快照。
+- **像素办公室**：6 个工位，状态来自真实事件流，点击工位可查看员工档案；WebSocket 断线自动重连并恢复快照。
 - **Demo / Live**：Demo 回放预验证历史任务，Live 才调用真实模型。
 
 ## 本地启动

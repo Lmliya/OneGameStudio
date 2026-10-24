@@ -6,69 +6,101 @@
     <title>OneGameStudio · AI 游戏工作室</title>
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230d0f17'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%237ee787'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%2358a6ff'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%235a3a22'/%3E%3Crect x='1' y='1' width='14' height='14' fill='%23fff3d6'/%3E%3Crect x='3' y='3' width='5' height='5' fill='%23f2b134'/%3E%3Crect x='8' y='8' width='5' height='5' fill='%236fbf73'/%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="/style.css?v=20261024l" />
+    <link rel="stylesheet" href="/style.css?v=20261025b" />
   </head>
   <body>
     <header class="topbar">
-      <div class="brand">
-        <span class="logo">▚</span> ONEGAMESTUDIO
+      <div class="brand" title="OneGameStudio">
+        <span class="logo" aria-hidden="true"></span>
+        <span class="brand-name">OneGameStudio</span>
         <span class="ver">v0.9</span>
       </div>
 
-      <form id="ceo-form" class="ceo-console" autocomplete="off">
-        <input
-          id="requirement"
-          type="text"
-          maxlength="200"
-          placeholder="CEO 需求：例如做一个能计分的贪吃蛇小游戏"
-          required
-        />
-        <select id="sop-mode" title="SOP 模式：auto 由后端规则自动选择">
-          <option value="auto">SOP AUTO</option>
-          <option value="fast">FAST</option>
-          <option value="balanced">BALANCED</option>
-          <option value="creative">CREATIVE</option>
-        </select>
-        <select
-          id="source-version"
-          class="source-input"
-          title="选择历史任务作为本次执行的来源版本，按时间降序"
-        >
-          <option value="">不使用来源版本</option>
-        </select>
-        <button id="submit" type="submit">开始开发</button>
-      </form>
-
-      <div class="status-group">
+      <div class="status-group" aria-label="公司状态">
         <span id="mode-badge" class="badge badge-wait" title="运行模式"
           >模式 —</span
         >
         <span id="sop-badge" class="badge badge-wait">SOP --</span>
         <span id="conn" class="badge badge-wait">连接中…</span>
         <span id="task-status" class="badge badge-wait">空闲</span>
-        <span id="task-id" class="task-id"></span>
+        <span id="task-id" class="task-id" title="当前任务 ID"></span>
       </div>
     </header>
 
     <main class="layout">
-      <section class="office panel">
-        <div class="panel-head">
-          <span>像素办公室</span>
-          <span id="office-task" class="muted">尚未分配任务</span>
-        </div>
-        <canvas id="office" width="880" height="520"></canvas>
-      </section>
+      <div class="office-col">
+        <section class="office panel">
+          <div class="panel-head">
+            <span class="panel-title">像素办公室</span>
+            <span id="office-task" class="muted">尚未分配任务</span>
+          </div>
+          <div class="office-viewport">
+            <div class="office-stage">
+              <canvas id="office" width="880" height="520"></canvas>
+              <div
+                id="office-hotspots"
+                class="office-hotspots"
+                aria-label="办公室工位，点击查看员工档案"
+              ></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="command panel" aria-label="CEO 指令台">
+          <div class="panel-head">
+            <span class="panel-title">CEO 指令台</span>
+            <span class="muted">发布开发任务</span>
+          </div>
+          <form id="ceo-form" class="ceo-console" autocomplete="off">
+            <label class="field field-req">
+              <span class="field-label">开发需求</span>
+              <input
+                id="requirement"
+                type="text"
+                maxlength="200"
+                placeholder="例如：做一个能计分的贪吃蛇小游戏"
+                required
+              />
+            </label>
+            <label class="field field-sop">
+              <span class="field-label">SOP 模式</span>
+              <select id="sop-mode" title="SOP 模式：auto 由后端规则自动选择">
+                <option value="auto">SOP AUTO</option>
+                <option value="fast">FAST</option>
+                <option value="balanced">BALANCED</option>
+                <option value="creative">CREATIVE</option>
+              </select>
+            </label>
+            <label class="field field-src">
+              <span class="field-label">来源版本（继续开发）</span>
+              <select
+                id="source-version"
+                class="source-input"
+                title="选择历史任务作为本次执行的来源版本，按时间降序"
+              >
+                <option value="">不使用来源版本</option>
+              </select>
+            </label>
+            <button id="submit" type="submit" class="btn-primary">
+              开始开发
+            </button>
+          </form>
+        </section>
+      </div>
 
       <aside class="deliverables panel">
-        <nav class="tabs" id="tabs">
-          <button type="button" data-tab="game" class="active">Game</button>
-          <button type="button" data-tab="studio">Studio</button>
-          <button type="button" data-tab="review">Review</button>
-          <button type="button" data-tab="marketing">Marketing</button>
-          <button type="button" data-tab="employee">Employee</button>
-          <button type="button" data-tab="logs">Logs</button>
+        <div class="panel-head">
+          <span class="panel-title">游戏工作台</span>
+        </div>
+        <nav class="tabs" id="tabs" aria-label="游戏工作台标签">
+          <button type="button" data-tab="game" class="active">游戏</button>
+          <button type="button" data-tab="studio">企划</button>
+          <button type="button" data-tab="review">审查</button>
+          <button type="button" data-tab="marketing">宣传</button>
+          <button type="button" data-tab="employee">员工</button>
+          <button type="button" data-tab="logs">日志</button>
         </nav>
 
         <div class="tab-body">
@@ -107,6 +139,7 @@
                 <span id="preview-error-detail"></span>
               </div>
               <div id="preview-empty" class="overlay">
+                <span class="overlay-icon" aria-hidden="true"></span>
                 <span>游戏生成后会出现在这里</span>
               </div>
             </div>
@@ -144,12 +177,12 @@
     </main>
 
     <footer class="logbar">
-      <span class="logbar-title">事件</span>
+      <span class="logbar-title">公司广播</span>
       <div id="log-strip" class="log-strip"></div>
     </footer>
 
-    <script src="/office.js?v=20261024g"></script>
-    <script src="/app.js?v=20261024m"></script>
-    <script src="/talent.js?v=20261024h"></script>
+    <script src="/office.js?v=20261025b"></script>
+    <script src="/app.js?v=20261025b"></script>
+    <script src="/talent.js?v=20261025b"></script>
   </body>
 </html>
