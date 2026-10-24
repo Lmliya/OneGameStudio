@@ -2,8 +2,9 @@
 
 轻量级 AI 游戏开发工作室。输入一句自然语言游戏需求，四个 AI 员工（COO / Engineer / Reviewer / Marketer）协作产出可运行的 HTML5 游戏、审查报告与营销文案。
 
-> 当前进度：**阶段 2（四 Agent 工作流）**。Mock 模式下可完整跑通
-> `COO → Engineer → Reviewer → Engineer → Reviewer → Marketer`。
+> 当前进度：**阶段 5（像素办公室与实时驾驶舱）**。Mock 模式下可完整跑通
+> `COO → Engineer → Reviewer → Engineer → Reviewer → Marketer`，
+> 并在浏览器里实时观看四个 AI 员工工作、直接试玩生成结果。
 
 ## 快速开始
 
@@ -20,6 +21,19 @@ curl http://127.0.0.1:8000/api/health
 # {"status":"ok","mock_mode":true}
 ```
 
+## 界面
+
+顶部输入需求点「开始开发」，左边像素办公室里四个员工会依次开工，右边四个标签页实时更新：
+
+| 标签          | 内容                                           |
+| ------------- | ---------------------------------------------- |
+| **Game**      | 隔离 iframe 中直接试玩；可切换修复前的历史版本 |
+| **Review**    | AI 裁决、问题清单、机械门禁 10 项检查表        |
+| **Marketing** | 定位、Slogan、两篇小红书文案、七天推广计划     |
+| **Logs**      | 全量事件流                                     |
+
+底部事件条滚动显示最近事件。刷新页面会自动恢复当前任务，WebSocket 断线后自动重连（1s → 8s 退避）。所有员工状态都来自后端事件，没有前端伪造的进度动画。
+
 ## 创建一个任务
 
 ```bash
@@ -34,6 +48,19 @@ curl -X POST http://127.0.0.1:8000/api/tasks \
 ```bash
 curl http://127.0.0.1:8000/api/tasks/<task_id>
 curl http://127.0.0.1:8000/api/tasks/<task_id>/artifacts
+curl http://127.0.0.1:8000/api/tasks/<task_id>/history
+```
+
+实时事件走 WebSocket（连上立即收到 `task.snapshot` 快照）：
+
+```bash
+websocat ws://127.0.0.1:8000/ws/tasks/<task_id>
+```
+
+游戏预览（只允许 `index.html` 与 `history/index.v{n}.html`）：
+
+```
+http://127.0.0.1:8000/preview/<task_id>/index.html
 ```
 
 产物位置：
@@ -42,9 +69,13 @@ curl http://127.0.0.1:8000/api/tasks/<task_id>/artifacts
 output/{task_id}/
     prd.md
     index.html
+    gate.json
     review.json
+    marketing_kit.json
     marketing_kit.md
     task.json
+    history/index.v1.html
+    history/gate.v1.json
 ```
 
 ## 质量审查
@@ -106,7 +137,8 @@ pending → planning(COO) → coding(Engineer) → reviewing(Reviewer)
 
 ```
 backend/
-    main.py           FastAPI 入口
+    main.py           FastAPI 入口（API / WebSocket / 隔离预览）
+    bus.py            进程内事件总线
     config.py         全局配置
     schemas.py        输出契约
     talents.py        Talent 加载与校验
@@ -114,8 +146,9 @@ backend/
     models/           TaskRecord / TalentSpec / TraceEvent
     core/vessel.py    员工执行容器
     providers/        base / mock / openai
+    gate/             机械门禁（Playwright）
     workflow/         状态机与编排引擎
-frontend/             index.html / style.css / app.js
+frontend/             index.html / style.css / office.js / app.js
 talents/              四个员工的 YAML
 tests/                pytest
 docs/                 architecture.md / progress.md

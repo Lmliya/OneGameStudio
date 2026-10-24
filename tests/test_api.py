@@ -96,3 +96,79 @@ def test_background_execution_can_be_scheduled(tmp_path: Path) -> None:
     asyncio.run(run())
     loaded = store.load(record.task_id)
     assert loaded.status.value in {"completed", "needs_attention"}
+
+
+def test_preview_serves_game_with_isolation_headers(client: TestClient) -> None:
+    """预览必须带 CSP，禁止页面联网与访问本站接口。"""
+    created = client.post("/api/tasks", json={"requirement": "预览安全测试"})
+    task_id = created.json()["task_id"]
+    record = main.store.load(task_id)
+    main.store.write_artifact(
+        record, "index.html", "<html><body><canvas id='c'></canvas></body></html>"
+    )
+
+    response = client.get(f"/preview/{task_id}/index.html")
+
+    assert response.status_code == 200
+    assert "<canvas" in response.text
+    csp = response.headers["content-security-policy"]
+    assert "connect-src 'none'" in csp
+    assert "default-src 'none'" in csp
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_preview_rejects_unlisted_files(client: TestClient) -> None:
+    created = client.post("/api/tasks", json={"requirement": "越权读取测试"})
+    task_id = created.json()["task_id"]
+    record = main.store.load(task_id)
+    main.store.write_artifact(record, "task.json", "{}")
+
+    assert client.get(f"/preview/{task_id}/task.json").status_code == 404
+    assert client.get(f"/preview/{task_id}/index.html").status_code == 404
+    assert client.get("/preview/../etc/passwd").status_code == 404
+
+
+def test_single_artifact_endpoint(client: TestClient) -> None:
+    created = client.post("/api/tasks", json={"requirement": "单文件读取测试"})
+    task_id = created.json()["task_id"]
+    record = main.store.load(task_id)
+    main.store.write_artifact(record, "prd.md", "# 测试 PRD")
+
+    response = client.get(f"/api/tasks/{task_id}/artifacts/prd.md")
+
+    assert response.status_code == 200
+    assert "测试 PRD" in response.text
+    assert client.get(f"/api/tasks/{task_id}/artifacts/none.md").status_code == 404
+
+
+def test_history_lists_snapshots(client: TestClient) -> None:
+    created = client.post("/api/tasks", json={"requirement": "历史版本测试"})
+    task_id = created.json()["task_id"]
+    record = main.store.load(task_id)
+    main.store.write_artifact(record, "index.html", "<html></html>")
+    main.store.snapshot(record, "index.html", "history/index.v1.html")
+
+    response = client.get(f"/api/tasks/{task_id}/history")
+
+    assert response.status_code == 200
+    assert response.json() == ["history/index.v1.html"]
+
+
+def test_websocket_sends_task_snapshot(client: TestClient) -> None:
+    """连上即收到快照，断线重连后前端可据此完整恢复界面。"""
+    created = client.post("/api/tasks", json={"requirement": "快照测试"})
+    task_id = created.json()["task_id"]
+
+    with client.websocket_connect(f"/ws/tasks/{task_id}") as websocket:
+        message = websocket.receive_json()
+
+    assert message["type"] == "task.snapshot"
+    assert message["task"]["task_id"] == task_id
+    assert message["task"]["status"] == "pending"
+
+
+def test_websocket_rejects_unknown_task(client: TestClient) -> None:
+    with client.websocket_connect("/ws/tasks/ffffffffffff") as websocket:
+        with pytest.raises(Exception):
+            message = websocket.receive_json()
+            raise AssertionError(f"不应收到消息：{message}")

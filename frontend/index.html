@@ -1,28 +1,104 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OneGameStudio</title>
-  <link rel="stylesheet" href="/style.css" />
-</head>
-<body>
-  <header class="topbar">
-    <h1>OneGameStudio</h1>
-    <span id="status" class="badge badge-wait">连接中…</span>
-  </header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OneGameStudio · AI 游戏工作室</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230d0f17'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%237ee787'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%2358a6ff'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">▚</span> ONEGAMESTUDIO
+        <span class="ver">v0.6</span>
+      </div>
 
-  <main class="panel">
-    <label for="requirement">CEO 需求</label>
-    <textarea
-      id="requirement"
-      rows="6"
-      placeholder="例如：做一个能计分的贪吃蛇小游戏"
-    ></textarea>
-    <button id="submit">提交需求</button>
-    <pre id="result" class="result">等待提交…</pre>
-  </main>
+      <form id="ceo-form" class="ceo-console" autocomplete="off">
+        <input
+          id="requirement"
+          type="text"
+          maxlength="200"
+          placeholder="CEO 需求：例如做一个能计分的贪吃蛇小游戏"
+          required
+        />
+        <button id="submit" type="submit">开始开发</button>
+      </form>
 
-  <script src="/app.js"></script>
-</body>
+      <div class="status-group">
+        <span id="conn" class="badge badge-wait">连接中…</span>
+        <span id="task-status" class="badge badge-wait">空闲</span>
+        <span id="task-id" class="task-id"></span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="office panel">
+        <div class="panel-head">
+          <span>像素办公室</span>
+          <span id="office-task" class="muted">尚未分配任务</span>
+        </div>
+        <canvas id="office" width="880" height="520"></canvas>
+      </section>
+
+      <aside class="deliverables panel">
+        <nav class="tabs" id="tabs">
+          <button type="button" data-tab="game" class="active">Game</button>
+          <button type="button" data-tab="review">Review</button>
+          <button type="button" data-tab="marketing">Marketing</button>
+          <button type="button" data-tab="logs">Logs</button>
+        </nav>
+
+        <div class="tab-body">
+          <section id="tab-game" class="tab-pane">
+            <div class="game-bar">
+              <span id="game-version" class="muted">尚无产物</span>
+              <span class="hint">点击画面后按方向键操作</span>
+              <button id="reload-preview" type="button" class="ghost">
+                刷新预览
+              </button>
+            </div>
+            <div class="frame-wrap">
+              <iframe
+                id="game-frame"
+                title="游戏预览"
+                sandbox="allow-scripts"
+                referrerpolicy="no-referrer"
+              ></iframe>
+              <div id="preview-error" class="overlay hidden">
+                <strong>预览加载失败</strong>
+                <span id="preview-error-detail"></span>
+              </div>
+              <div id="preview-empty" class="overlay">
+                <span>游戏生成后会出现在这里</span>
+              </div>
+            </div>
+          </section>
+
+          <section id="tab-review" class="tab-pane hidden">
+            <div id="review-body" class="scroll"></div>
+          </section>
+
+          <section id="tab-marketing" class="tab-pane hidden">
+            <div id="marketing-body" class="scroll"></div>
+          </section>
+
+          <section id="tab-logs" class="tab-pane hidden">
+            <div id="log-list" class="scroll log-list"></div>
+          </section>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="logbar">
+      <span class="logbar-title">事件</span>
+      <div id="log-strip" class="log-strip"></div>
+    </footer>
+
+    <script src="/office.js"></script>
+    <script src="/app.js"></script>
+  </body>
 </html>

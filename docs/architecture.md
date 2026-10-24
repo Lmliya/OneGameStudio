@@ -1,6 +1,6 @@
 # OneGameStudio 架构说明
 
-> 版本：v0.5（阶段 4：Vibe Marketing）
+> 版本：v0.6（阶段 5：像素办公室与实时驾驶舱）
 > 本文只描述已实现的部分，未实现的内容标注为"规划中"。
 
 ## 1. 项目定位
@@ -20,14 +20,20 @@
 Employee = Talent + Vessel
 Task     = WorkflowEngine + TaskStore
 Review   = Mechanical Gate + AI Reviewer
+Realtime = EventBus + WebSocket
 ```
 
 ## 3. 分层结构
 
 ```
-frontend/            纯静态页面，无构建链
+frontend/
+    index.html       驾驶舱骨架（顶部控制台 / 左办公室 / 右标签 / 底部日志）
+    style.css        像素风样式
+    office.js        Canvas 2D 像素办公室（事件驱动的员工动画）
+    app.js           WebSocket、快照恢复、产物渲染、日志
 backend/
-    main.py          FastAPI：/api/health、/api/tasks 系列
+    main.py          FastAPI：API + WebSocket + 隔离预览 + 静态页面
+    bus.py           进程内事件总线
     config.py        全局配置（LLM_*）
     schemas.py       输出契约 + 门禁报告
     talents.py       Talent 加载与工具白名单校验
@@ -181,14 +187,78 @@ Reviewer 只写 `review.json`，Marketer 只写 `marketing_kit.*`，两者都不
 
 写入策略：只新增不删除。任一阶段失败，已产出文件全部保留。
 
+## 7.5 实时驾驶舱
+
+### 7.5.1 前端结构
+
+| 区域          | 内容                                                |
+| ------------- | --------------------------------------------------- |
+| 顶部（64px）  | 需求输入、WebSocket 连接徽章、任务状态徽章、task_id |
+| 左侧（55%）   | Canvas 2D 像素办公室：四张桌子 + 四名员工 + 任务牌  |
+| 右侧（45%）   | Game / Review / Marketing / Logs 四个标签页         |
+| 底部（116px） | 最近事件条（同内容在 Logs 页保留全量）              |
+
+员工状态只有 `idle / working / reviewing / fixing / completed / error`，**全部由后端事件驱动**。前端没有任何计时器或随机数伪造进度；刷新页面后用快照回放事件，画面立即恢复。
+
+### 7.5.2 事件契约
+
+`TraceEvent` 是唯一事件模型，写入 `task.json` 与推送 WebSocket 使用同一份数据：
+
+| 字段      | 说明                                               |
+| --------- | -------------------------------------------------- |
+| `type`    | 11 种事件类型之一                                  |
+| `task_id` | 任务标识                                           |
+| `agent`   | 相关员工（`coo/engineer/reviewer/marketer`），可选 |
+| `status`  | 员工状态或任务状态，可选                           |
+| `stage`   | 当前阶段，便于日志过滤                             |
+| `message` | 人读文案（顶部与日志直接展示）                     |
+| `data`    | 结构化附加信息（失败项、裁决、产物列表等）         |
+| `ts`      | ISO 时间戳                                         |
+
+旧版本 `task.json` 中的历史事件名（`state_changed` 等）由 `EventType._missing_` 映射到新枚举，读取无需迁移。
+
+### 7.5.3 WebSocket 协议
+
+```
+客户端  ──连接──▶  /ws/tasks/{task_id}
+服务端  ──立即──▶  {"type":"task.snapshot","task": {...完整 TaskRecord...}}
+服务端  ──持续──▶  {"type":"<event>", "task_id","agent","status","stage","message","ts","data"}
+服务端  ──空闲 20s──▶ {"type":"ping"}
+```
+
+- 快照消息里带完整 `events` 数组，前端据此重建员工状态、日志与产物列表。
+- 断线由前端指数退避重连（1s → 8s），`localStorage` 保存最近 task_id。
+- `EventBus` 每任务一个 `asyncio.Queue(256)`，队列满时丢弃最旧事件：慢消费者不会阻塞工作流，也不会让事件无限堆积。
+- 该总线是**进程内**的；多 worker 部署需要替换为外部 broker（当前阶段不做）。
+
+### 7.5.4 预览隔离
+
+`GET /preview/{task_id}/{filename}` 只服务两种文件：`index.html` 与 `history/index.v{n}.html`。
+
+| 防护       | 实现                                                                                                     |
+| ---------- | -------------------------------------------------------------------------------------------------------- |
+| 路径穿越   | `task_id` 匹配 `^[0-9a-f]{6,32}$`，文件名匹配固定白名单正则                                              |
+| 页面联网   | CSP `default-src 'none'; connect-src 'none'`                                                             |
+| 读本站数据 | CSP `frame-ancestors 'self'` + iframe `sandbox="allow-scripts"`（无 `allow-same-origin`，opaque origin） |
+| 缓存残留   | `Cache-Control: no-store` + 前端 `?t=` 参数                                                              |
+| MIME 嗅探  | `X-Content-Type-Options: nosniff`                                                                        |
+
+生成游戏因此在「能运行」与「无法访问主页面上下文」之间取得平衡：脚本可执行，但拿不到 Cookie、localStorage 与父页面 DOM。
+
 ## 8. API
 
-| 方法 | 路径                             | 行为                                    |
-| ---- | -------------------------------- | --------------------------------------- |
-| GET  | `/api/health`                    | 返回运行模式                            |
-| POST | `/api/tasks`                     | 202，后台执行；同需求运行中任务返回 409 |
-| GET  | `/api/tasks/{task_id}`           | 任务状态与事件                          |
-| GET  | `/api/tasks/{task_id}/artifacts` | 产物文件名到内容的映射                  |
+| 方法 | 路径                                    | 行为                                    |
+| ---- | --------------------------------------- | --------------------------------------- |
+| GET  | `/api/health`                           | 返回运行模式                            |
+| POST | `/api/tasks`                            | 202，后台执行；同需求运行中任务返回 409 |
+| GET  | `/api/tasks/{task_id}`                  | 任务状态与事件                          |
+| GET  | `/api/tasks/{task_id}/artifacts`        | 产物文件名到内容的映射                  |
+| GET  | `/api/tasks/{task_id}/artifacts/{file}` | 单个产物（白名单校验）                  |
+| GET  | `/api/tasks/{task_id}/history`          | 修复前版本快照列表                      |
+| GET  | `/preview/{task_id}/{file}`             | 隔离预览（CSP + nosniff + no-store）    |
+| WS   | `/ws/tasks/{task_id}`                   | 首帧快照 + 实时事件流                   |
+
+未知 task_id 的 WebSocket 连接会被直接关闭。
 
 ## 9. 安全边界
 
@@ -206,16 +276,23 @@ Reviewer 只写 `review.json`，Marketer 只写 `marketing_kit.*`，两者都不
 - 全项目无 shell 执行入口。
 - API Key 只从服务端环境变量读取。
 
+浏览器内预览部分（见 7.5.4）：
+
+- 只服务 `index.html` 与 `history/index.v{n}.html`，其余一律 404。
+- `task_id` 正则 + 文件名白名单，双重拦截路径穿越。
+- CSP 禁止联网与取本站资源（`connect-src 'none'`），`frame-ancestors 'self'` 防被外部站点嵌入。
+- iframe `sandbox="allow-scripts"` 且不含 `allow-same-origin`，游戏处于 opaque origin。
+
 ## 10. Mini-6 落位情况
 
-| 能力          | 当前状态                                         |
-| ------------- | ------------------------------------------------ |
-| Task Contract | 已实现：任务记录 + 四类输出契约                  |
-| Tool Policy   | 配置层白名单；运行时拦截待后续阶段               |
-| Quality Gate  | 已实现双层：Playwright 机械门禁 + AI 审查        |
-| Recovery      | 已实现有限重试（`max_fix_rounds`）+ 版本快照     |
-| Budget Guard  | `Vessel` 实例内累计熔断，同一任务共用同一 Vessel |
-| Event Trace   | 状态、审查拒绝、修复请求均写入 `task.json`       |
+| 能力          | 当前状态                                                |
+| ------------- | ------------------------------------------------------- |
+| Task Contract | 已实现：任务记录 + 四类输出契约                         |
+| Tool Policy   | 配置层白名单；运行时拦截待后续阶段                      |
+| Quality Gate  | 已实现双层：Playwright 机械门禁 + AI 审查               |
+| Recovery      | 已实现有限重试（`max_fix_rounds`）+ 版本快照            |
+| Budget Guard  | `Vessel` 实例内累计熔断，同一任务共用同一 Vessel        |
+| Event Trace   | 已实现落盘 + 实时推送：`task.json` 全量事件 + WebSocket |
 
 ## 11. 运行依赖
 

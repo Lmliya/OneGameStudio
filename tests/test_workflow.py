@@ -137,7 +137,11 @@ async def test_reviewer_rejects_then_passes(tmp_path: Path) -> None:
 
     assert result.status is TaskStatus.COMPLETED
     assert result.fix_attempts == 1
-    states = [e.stage for e in result.events if e.type.value == "state_changed"]
+    states = [
+        e.stage
+        for e in result.events
+        if e.type.value == "task.status_changed"
+    ]
     assert "fixing" in states
     assert states.count("reviewing") == 2
     # 修复前的旧版本必须保留

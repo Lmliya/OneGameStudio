@@ -23,6 +23,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from backend.core.vessel import (
     OutputParseError,
     OutputValidationError,
@@ -32,7 +34,7 @@ from backend.core.vessel import (
 from backend.gate import GateUnavailableError, run_mechanical_gate
 from backend.marketing import find_fabricated_claims, render_marketing
 from backend.models.contract import TaskRecord, TaskStatus
-from backend.models.events import EventType, TraceEvent
+from backend.models.events import AgentStatus, EventType, TraceEvent
 from backend.schemas import (
     GameArtifact,
     GamePRD,
@@ -102,12 +104,20 @@ def _gate_issue(check: GateCheck) -> Issue:
 
 class WorkflowEngine:
     def __init__(
-        self, vessel: Vessel, store: TaskStore, *, max_fix_rounds: int = 2
+        self,
+        vessel: Vessel,
+        store: TaskStore,
+        *,
+        max_fix_rounds: int = 2,
+        on_event: Callable[[dict], None] | None = None,
     ) -> None:
         self._vessel = vessel
         self._store = store
         self._max_fix = max_fix_rounds
+        self._on_event = on_event
         self._running: set[str] = set()
+        # task_id -> 当前正在执行的员工，用于失败时标记 error 状态
+        self._active_agent: dict[str, str] = {}
 
     @property
     def is_running(self) -> set[str]:
@@ -130,20 +140,31 @@ class WorkflowEngine:
         try:
             # ---------- COO ----------
             self._transition(record, TaskStatus.PLANNING)
+            self._agent(record, "coo", AgentStatus.WORKING, "正在制定游戏方案")
             prd: GamePRD = await self._call(record, "coo", record.requirement)
-            self._store.write_artifact(record, "prd.md", render_prd(prd))
+            self._agent(record, "coo", AgentStatus.COMPLETED, "游戏方案已完成")
+            self._write(record, "prd.md", render_prd(prd))
             self._store.save(record)
 
             # ---------- Engineer + 机械门禁 ----------
             self._transition(record, TaskStatus.CODING)
+            self._agent(record, "engineer", AgentStatus.WORKING, "正在编写游戏代码")
             game: GameArtifact = await self._call(
                 record, "engineer", self._engineer_context(record.requirement, prd, None)
             )
             report = await self._apply_gate(record, game, prd)
+            self._agent(record, "engineer", AgentStatus.COMPLETED, "游戏初版已生成")
 
             # ---------- 双层审查 + 修复循环 ----------
             self._transition(record, TaskStatus.REVIEWING)
+            self._agent(record, "reviewer", AgentStatus.REVIEWING, "正在检查游戏质量")
             review = await self._review(record, prd, game, report)
+            self._agent(
+                record,
+                "reviewer",
+                AgentStatus.COMPLETED,
+                "审查通过" if review.verdict == "PASS" else f"发现 {len(review.issues)} 个问题",
+            )
 
             while review.verdict != "PASS":
                 if record.fix_attempts >= record.max_fix_rounds:
@@ -155,22 +176,22 @@ class WorkflowEngine:
                     return record
 
                 self._transition(record, TaskStatus.FIXING)
+                self._agent(record, "engineer", AgentStatus.FIXING, "正在根据审查报告修复")
                 snapshot = f"history/index.v{record.fix_attempts + 1}.html"
                 self._store.snapshot(record, "index.html", snapshot)
                 record.fix_attempts += 1
-                record.events.append(
-                    TraceEvent(
-                        task_id=record.task_id,
-                        type=EventType.FIX_REQUESTED,
-                        stage=TaskStatus.FIXING.value,
-                        message=f"第 {record.fix_attempts} 次修复，旧版本已存入 {snapshot}",
-                        data={
-                            "issues": [i.model_dump() for i in review.issues],
-                            "gate_failed": report.failed_ids,
-                        },
-                    )
+                self._emit(
+                    record,
+                    EventType.FIX_REQUESTED,
+                    f"第 {record.fix_attempts} 次修复，旧版本已存入 {snapshot}",
+                    agent="engineer",
+                    status=AgentStatus.FIXING.value,
+                    data={
+                        "issues": [i.model_dump() for i in review.issues],
+                        "gate_failed": report.failed_ids,
+                        "snapshot": snapshot,
+                    },
                 )
-                self._store.save(record)
 
                 game = await self._call(
                     record,
@@ -178,12 +199,21 @@ class WorkflowEngine:
                     self._engineer_context(record.requirement, prd, review),
                 )
                 report = await self._apply_gate(record, game, prd)
+                self._agent(record, "engineer", AgentStatus.COMPLETED, "修复版本已生成")
 
                 self._transition(record, TaskStatus.REVIEWING)
+                self._agent(record, "reviewer", AgentStatus.REVIEWING, "正在复查修复版本")
                 review = await self._review(record, prd, game, report)
+                self._agent(
+                    record,
+                    "reviewer",
+                    AgentStatus.COMPLETED,
+                    "审查通过" if review.verdict == "PASS" else f"发现 {len(review.issues)} 个问题",
+                )
 
             # ---------- Marketer ----------
             self._transition(record, TaskStatus.MARKETING)
+            self._agent(record, "marketer", AgentStatus.WORKING, "正在生成推广方案")
             kit: MarketingKit = await self._call(
                 record, "marketer", self._marketing_context(prd, game, review, report)
             )
@@ -192,14 +222,18 @@ class WorkflowEngine:
                 raise StageExecutionError(
                     "营销文案包含无法证实的数据表述：" + "、".join(dict.fromkeys(fabricated))
                 )
-            self._store.write_artifact(
-                record, "marketing_kit.json", kit.model_dump_json(indent=2)
-            )
-            self._store.write_artifact(
-                record, "marketing_kit.md", render_marketing(kit)
-            )
+            self._write(record, "marketing_kit.json", kit.model_dump_json(indent=2))
+            self._write(record, "marketing_kit.md", render_marketing(kit))
+            self._agent(record, "marketer", AgentStatus.COMPLETED, "推广方案已完成")
 
             self._transition(record, TaskStatus.COMPLETED)
+            self._emit(
+                record,
+                EventType.TASK_COMPLETED,
+                "任务完成，游戏与营销素材已就绪",
+                status=TaskStatus.COMPLETED.value,
+                data={"artifacts": sorted(record.artifacts)},
+            )
             self._store.save(record)
             return record
 
@@ -213,16 +247,95 @@ class WorkflowEngine:
         result = await self._vessel.execute(
             talent_id, context, task_id=record.task_id
         )
+        self._emit(
+            record,
+            EventType.AGENT_STATUS_CHANGED,
+            f"{talent_id} 调用完成，耗时 {result.duration_ms}ms",
+            agent=talent_id,
+            status=None,
+            data={
+                "duration_ms": result.duration_ms,
+                "tokens": result.input_tokens + result.output_tokens,
+                "cost_usd": result.cost_usd,
+            },
+            save=False,
+        )
         return result.output
+
+    def _write(self, record: TaskRecord, filename: str, content: str) -> None:
+        """写产物并广播 artifact.created，让前端知道有新文件。"""
+        self._store.write_artifact(record, filename, content)
+        self._emit(
+            record,
+            EventType.ARTIFACT_CREATED,
+            f"生成 {filename}",
+            data={"artifact": filename},
+            save=False,
+        )
+
+    def _agent(
+        self, record: TaskRecord, agent: str, status: AgentStatus, message: str
+    ) -> None:
+        """员工状态只由引擎写入，前端不做推断。"""
+        if status in {AgentStatus.WORKING, AgentStatus.REVIEWING, AgentStatus.FIXING}:
+            self._active_agent[record.task_id] = agent
+        elif self._active_agent.get(record.task_id) == agent:
+            self._active_agent.pop(record.task_id, None)
+        self._emit(
+            record,
+            EventType.AGENT_STATUS_CHANGED,
+            message,
+            agent=agent,
+            status=status.value,
+        )
+
+    def _emit(
+        self,
+        record: TaskRecord,
+        event_type: EventType,
+        message: str,
+        *,
+        agent: str | None = None,
+        status: str | None = None,
+        data: dict | None = None,
+        save: bool = True,
+    ) -> None:
+        """记录事件、落盘并推送到 WebSocket 订阅者。"""
+        event = TraceEvent(
+            task_id=record.task_id,
+            type=event_type,
+            message=message,
+            agent=agent,
+            status=status,
+            stage=record.status.value,
+            data=data or {},
+        )
+        record.events.append(event)
+        if save:
+            self._store.save(record)
+        if self._on_event is not None:
+            self._on_event(event.as_message())
 
     async def _apply_gate(
         self, record: TaskRecord, game: GameArtifact, prd: GamePRD
     ) -> MechanicalReport:
         """落盘游戏代码并执行机械门禁，报告写入 gate.json。"""
-        self._store.write_artifact(record, "index.html", game.html)
+        self._write(record, "index.html", game.html)
         report = await run_mechanical_gate(game.html, prd)
-        self._store.write_artifact(
-            record, "gate.json", report.model_dump_json(indent=2)
+        self._store.write_artifact(record, "gate.json", report.model_dump_json(indent=2))
+        self._emit(
+            record,
+            EventType.ARTIFACT_CREATED,
+            f"机械门禁{'通过' if report.passed else '未通过'}："
+            f"{len(report.checks)} 项检查，失败 {len(report.failed_ids)} 项",
+            status=AgentStatus.REVIEWING.value,
+            data={
+                "artifact": "gate.json",
+                "passed": report.passed,
+                "failed": report.failed_ids,
+                "unverified": report.unverified_ids,
+            },
+            save=False,
         )
         # 每轮门禁报告都留档，拒绝原因可追溯
         self._store.snapshot(
@@ -265,22 +378,35 @@ class WorkflowEngine:
             review = review.model_copy(update=updates)
 
         # Reviewer 只写审查结果，绝不回写 index.html
-        self._store.write_artifact(
-            record, "review.json", review.model_dump_json(indent=2)
+        self._write(record, "review.json", review.model_dump_json(indent=2))
+        self._emit(
+            record,
+            EventType.REVIEW_COMPLETED,
+            f"第 {attempt} 次审查：{review.verdict}（{len(review.issues)} 个问题）",
+            agent="reviewer",
+            status=AgentStatus.REVIEWING.value,
+            data={
+                "verdict": review.verdict,
+                "issues": [i.model_dump() for i in review.issues],
+                "suggestions": review.suggestions,
+                "forced_by_gate": review.forced_by_gate,
+                "gate_failed": report.failed_ids,
+                "gate_unverified": report.unverified_ids,
+                "attempt": attempt,
+            },
+            save=False,
         )
         if review.verdict != "PASS":
-            record.events.append(
-                TraceEvent(
-                    task_id=record.task_id,
-                    type=EventType.STAGE_FAILED,
-                    stage=TaskStatus.REVIEWING.value,
-                    message=f"第 {attempt} 次审查未通过：{review.summary}",
-                    data={
-                        "gate_failed": report.failed_ids,
-                        "gate_unverified": report.unverified_ids,
-                        "forced_by_gate": review.forced_by_gate,
-                    },
-                )
+            self._emit(
+                record,
+                EventType.FIX_REQUESTED,
+                f"第 {attempt} 次审查未通过：{review.summary}",
+                agent="reviewer",
+                status=AgentStatus.REVIEWING.value,
+                data={
+                    "gate_failed": report.failed_ids,
+                    "gate_unverified": report.unverified_ids,
+                },
             )
         self._store.save(record)
         return review
@@ -326,30 +452,34 @@ class WorkflowEngine:
         assert_transition(record.status, target)
         previous = record.status
         record.status = target
-        record.events.append(
-            TraceEvent(
-                task_id=record.task_id,
-                type=EventType.STATE_CHANGED,
-                stage=target.value,
-                message=f"{previous.value} -> {target.value}",
-                data={"from": previous.value, "to": target.value},
-            )
+        self._emit(
+            record,
+            EventType.TASK_STATUS_CHANGED,
+            f"{previous.value} -> {target.value}",
+            status=target.value,
+            data={"from": previous.value, "to": target.value},
         )
-        self._store.save(record)
 
     def _fail(self, record: TaskRecord, message: str) -> TaskRecord:
         record.error = message
+        agent = self._active_agent.pop(record.task_id, None)
+        if agent is not None:
+            self._emit(
+                record,
+                EventType.AGENT_STATUS_CHANGED,
+                f"执行失败：{message}",
+                agent=agent,
+                status=AgentStatus.ERROR.value,
+                save=False,
+            )
         assert_transition(record.status, TaskStatus.FAILED)
         previous = record.status
         record.status = TaskStatus.FAILED
-        record.events.append(
-            TraceEvent(
-                task_id=record.task_id,
-                type=EventType.TASK_FAILED,
-                stage=TaskStatus.FAILED.value,
-                message=f"{previous.value} -> failed：{message}",
-                data={"from": previous.value, "to": "failed"},
-            )
+        self._emit(
+            record,
+            EventType.TASK_FAILED,
+            f"{previous.value} -> failed：{message}",
+            status=TaskStatus.FAILED.value,
+            data={"from": previous.value, "to": "failed", "error": message},
         )
-        self._store.save(record)
         return record
