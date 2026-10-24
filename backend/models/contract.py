@@ -103,3 +103,13 @@ class TaskCreateRequest(BaseModel):
     source_version_id: str | None = Field(
         default=None, description="可选：父游戏版本 ID，用于增量分支"
     )
+
+
+class SelectFinalVersionRequest(BaseModel):
+    """CEO 回退请求：把当前交付物恢复到指定历史快照。
+
+    filename 取值限定为 index.html、history/index.vN.html 或 versions/*.html。
+    """
+
+    filename: str = Field(min_length=1, description="目标游戏快照的相对路径")
+

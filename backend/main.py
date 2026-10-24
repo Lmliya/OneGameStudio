@@ -19,6 +19,7 @@ from backend.evolution.service import EvolutionService
 from backend.evolution.store import EvolutionStore
 from backend.models.contract import (
     TERMINAL_STATUSES,
+    SelectFinalVersionRequest,
     TaskCreateRequest,
     TaskRecord,
 )
@@ -106,8 +107,10 @@ _background: set[asyncio.Task] = set()
 
 # task_id 只允许十六进制，杜绝路径穿越
 _TASK_ID = re.compile(r"^[0-9a-f]{6,32}$")
-# 预览只允许交付用的游戏文件及其历史版本，其余一律拒绝
-_PREVIEW_FILE = re.compile(r"^(index\.html|history/index\.v\d+\.html)$")
+# 预览只允许交付用的游戏文件、修复历史与不可变版本快照，其余一律拒绝
+_PREVIEW_FILE = re.compile(
+    r"^(index\.html|history/index\.v\d+\.html|versions/[0-9a-f]{6,32}-v[1-9]\d*\.html)$"
+)
 
 # 生成物是不可信代码：禁止联网、禁止访问本站接口与存储
 _PREVIEW_CSP = (
@@ -317,6 +320,28 @@ def list_versions(task_id: str) -> list[dict]:
         item.model_dump(mode="json")
         for item in _store_for(task_id).list_versions(task_id)
     ]
+
+
+@app.post("/api/tasks/{task_id}/final-version")
+def rollback_version(task_id: str, payload: SelectFinalVersionRequest) -> dict:
+    """CEO 回退：把当前交付物恢复到指定历史快照，快照本身不变。"""
+    task_store = _store_for(task_id)
+    if settings.app_mode == "demo" and settings.demo_read_only:
+        raise HTTPException(
+            status_code=403, detail="Demo 模式为只读：不能修改最终版本。"
+        )
+    try:
+        version_id = task_store.rollback_artifact(task_id, payload.filename)
+    except VersionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except VersionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except TaskNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="任务不存在") from exc
+    return {
+        "final_version_id": version_id,
+        "filename": payload.filename,
+    }
 
 
 @app.get("/api/tasks/{task_id}/history")

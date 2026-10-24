@@ -275,6 +275,31 @@ button.ghost {
   border-bottom: 2px solid var(--border);
 }
 
+.version-select {
+  max-width: 190px;
+  padding: 3px 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 2px solid var(--border);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.version-select:focus {
+  outline: none;
+  border-color: var(--accent-2);
+}
+
+#rollback-version {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+#rollback-version:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .hint {
   flex: 1;
   text-align: center;

@@ -157,6 +157,79 @@ def test_history_lists_snapshots(client: TestClient) -> None:
     assert response.json() == ["history/index.v1.html"]
 
 
+def test_rollback_to_earlier_version(client: TestClient, tmp_path: Path) -> None:
+    """CEO 可以把交付物回退到旧版本；版本快照本身保持不变。"""
+    created = client.post("/api/tasks", json={"requirement": "版本回退测试"})
+    task_id = created.json()["task_id"]
+    record = main.store.load(task_id)
+
+    first = GameVersion(
+        version_id=f"{task_id}-v1",
+        version_number=1,
+        task_id=task_id,
+        run_id=record.run_id,
+        sop_mode=SOPMode.FAST,
+        sop_reason="测试",
+        artifact_path=f"versions/{task_id}-v1.html",
+    )
+    main.store.save_version(record, first, "<html>v1</html>")
+    record = main.store.load(task_id)
+    second = GameVersion(
+        version_id=f"{task_id}-v2",
+        version_number=2,
+        task_id=task_id,
+        run_id=record.run_id,
+        parent_version_id=first.version_id,
+        sop_mode=SOPMode.BALANCED,
+        sop_reason="测试",
+        artifact_path=f"versions/{task_id}-v2.html",
+    )
+    main.store.save_version(record, second, "<html>v2</html>")
+    main.store.write_artifact(record, "index.html", "<html>v2</html>")
+    record.status = TaskStatus.COMPLETED
+    main.store.save(record)
+
+    response = client.post(
+        f"/api/tasks/{task_id}/final-version",
+        json={"filename": first.artifact_path},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["final_version_id"] == first.version_id
+    assert main.store.load(task_id).final_version_id == first.version_id
+    assert (tmp_path / task_id / "index.html").read_text("utf-8") == "<html>v1</html>"
+    # 历史快照不可变：V2 仍保留原内容
+    assert (tmp_path / task_id / second.artifact_path).read_text("utf-8") == (
+        "<html>v2</html>"
+    )
+
+
+def test_rollback_to_history_snapshot(client: TestClient, tmp_path: Path) -> None:
+    """回退到修复历史快照时恢复 index.html，并清空已登记版本指针。"""
+    created = client.post("/api/tasks", json={"requirement": "历史快照回退"})
+    task_id = created.json()["task_id"]
+    record = main.store.load(task_id)
+    history_dir = tmp_path / task_id / "history"
+    history_dir.mkdir()
+    (history_dir / "index.v1.html").write_text("<html>old</html>", encoding="utf-8")
+    main.store.write_artifact(record, "index.html", "<html>new</html>")
+    record.status = TaskStatus.COMPLETED
+    main.store.save(record)
+
+    response = client.post(
+        f"/api/tasks/{task_id}/final-version",
+        json={"filename": "history/index.v1.html"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["final_version_id"] is None
+    assert main.store.load(task_id).final_version_id is None
+    assert (tmp_path / task_id / "index.html").read_text("utf-8") == "<html>old</html>"
+    assert (tmp_path / task_id / "history/index.v1.html").read_text("utf-8") == (
+        "<html>old</html>"
+    )
+
+
 def test_versions_endpoint_and_source_branch(client: TestClient, tmp_path: Path) -> None:
     """版本列表可读；分支任务会复制父版本；非法或缺失父版本被拒绝。"""
     created = client.post("/api/tasks", json={"requirement": "版本接口测试"})

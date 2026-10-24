@@ -319,6 +319,7 @@ async function refreshArtifacts() {
     renderReview();
     renderMarketing();
     renderStudio();
+    renderVersionSelect();
     updatePreviewAvailability();
   } catch (error) {
     console.warn("产物读取失败", error);
@@ -343,9 +344,71 @@ function updatePreviewAvailability() {
     return;
   }
   const versions = state.history.filter((name) => name.endsWith(".html"));
-  gameVersionEl.textContent = `当前版本 · 历史 ${versions.length} 个`;
+  if (state.currentVersion === "index.html") {
+    gameVersionEl.textContent = `当前版本 · 历史 ${versions.length} 个`;
+  }
   if (frameEl.dataset.task !== `${state.taskId}/${state.currentVersion}`) {
     loadPreview(state.currentVersion);
+  }
+}
+
+function renderVersionSelect() {
+  const select = el("version-select");
+  const button = el("rollback-version");
+  if (!select || !button) return;
+  const finalId = state.task ? state.task.final_version_id : null;
+  const history = (state.history || [])
+    .filter((name) => /^history\/index\.v\d+\.html$/.test(name))
+    .map((name) => {
+      const label = name.replace("history/index.", "").replace(".html", "");
+      return `<option value="${esc(name)}">历史快照 ${esc(label.toUpperCase())}</option>`;
+    });
+  const versions = (state.versions || []).map((version) => {
+    const finalMark = version.version_id === finalId ? " · 最终" : "";
+    const label = `完成版本 V${version.version_number} · ${
+      SOP_LABEL[version.sop_mode] || version.sop_mode
+    }${finalMark}`;
+    return `<option value="versions/${esc(version.version_id)}.html">${esc(
+      label,
+    )}</option>`;
+  });
+  select.innerHTML = ['<option value="index.html">当前版本</option>']
+    .concat(history, versions)
+    .join("");
+
+  const selected = state.currentVersion || "index.html";
+  select.value = selected;
+  if (select.value !== selected) select.value = "index.html";
+  button.disabled = select.value === "index.html";
+}
+
+async function rollbackVersion() {
+  const select = el("version-select");
+  const button = el("rollback-version");
+  const filename = select ? select.value : "";
+  if (!state.taskId || !filename || filename === "index.html") return;
+  const label = select.options[select.selectedIndex].textContent;
+  button.disabled = true;
+  button.textContent = "回退中…";
+  try {
+    const response = await fetch(`/api/tasks/${state.taskId}/final-version`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.detail || `HTTP ${response.status}`);
+    }
+    state.currentVersion = "index.html";
+    await refreshArtifacts();
+    await loadPreview("index.html");
+    gameVersionEl.textContent = `已回退到 ${label}`;
+  } catch (error) {
+    gameVersionEl.textContent = `回退失败：${error.message}`;
+  } finally {
+    button.textContent = "回退到此版本";
+    renderVersionSelect();
   }
 }
 
@@ -367,10 +430,26 @@ async function loadPreview(version) {
     }
     frameEl.dataset.task = `${state.taskId}/${version}`;
     frameEl.src = url;
-    gameVersionEl.textContent = version.includes("history")
-      ? `历史版本 ${version.replace("history/index.", "").replace(".html", "").toUpperCase()}`
-      : "当前版本";
+    if (version.startsWith("history/")) {
+      gameVersionEl.textContent = `历史版本 ${version
+        .replace("history/index.", "")
+        .replace(".html", "")
+        .toUpperCase()}`;
+    } else if (version.startsWith("versions/")) {
+      const versionId = version
+        .replace(/^versions\//, "")
+        .replace(/\.html$/, "");
+      const found = (state.versions || []).find(
+        (item) => item.version_id === versionId,
+      );
+      gameVersionEl.textContent = found
+        ? `完成版本 V${found.version_number}`
+        : "历史完成版本";
+    } else {
+      gameVersionEl.textContent = "当前版本";
+    }
     showPreviewFrame();
+    renderVersionSelect();
   } catch (error) {
     showPreviewError(error.message || "预览加载失败");
   }
@@ -784,6 +863,12 @@ el("ceo-form").addEventListener("submit", (event) => {
 el("reload-preview").addEventListener("click", () =>
   loadPreview(state.currentVersion),
 );
+
+el("version-select").addEventListener("change", () => {
+  loadPreview(el("version-select").value);
+});
+
+el("rollback-version").addEventListener("click", rollbackVersion);
 
 // ---------- 启动 ----------
 

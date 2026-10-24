@@ -18,6 +18,9 @@ TASK_FILE = "task.json"
 VERSIONS_DIR = "versions"
 SOURCE_DIR = "source"
 _VERSION_ID_RE = re.compile(r"^[0-9a-f]{6,32}-v[1-9]\d*$")
+_ROLLBACK_FILE_RE = re.compile(
+    r"^(index\.html|history/index\.v\d+\.html|versions/[0-9a-f]{6,32}-v[1-9]\d*\.html)$"
+)
 
 
 class TaskNotFoundError(RuntimeError):
@@ -171,6 +174,40 @@ class TaskStore:
         record.final_version_id = version.version_id
         self.save(record)
         return version
+
+    def rollback_artifact(self, task_id: str, filename: str) -> str | None:
+        """把当前交付物恢复为指定历史快照，快照本身保持不变。
+
+        filename 只接受 index.html、修复历史与不可变版本快照。
+        回退到不可变版本时同步更新 final_version_id；回退到修复历史时
+        清空指针，表示当前交付物不再对应某个已登记版本。
+        返回被回退到的版本 ID（历史快照为 None）。
+        """
+        if not _ROLLBACK_FILE_RE.match(filename):
+            raise VersionError(f"非法快照路径：{filename}")
+        record = self.load(task_id)
+        if record.status not in TERMINAL_STATUSES:
+            raise VersionError("任务尚未结束，不能回退版本")
+        source = self.task_dir(task_id) / filename
+        if not source.is_file() or source.is_symlink():
+            raise VersionNotFoundError(f"快照不存在：{filename}")
+
+        (self.task_dir(task_id) / "index.html").write_text(
+            source.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        record.artifacts["index.html"] = "index.html"
+
+        version_id: str | None = None
+        if filename.startswith("versions/"):
+            candidate = filename.removeprefix("versions/").removesuffix(".html")
+            if not any(
+                item.version_id == candidate for item in self.list_versions(task_id)
+            ):
+                raise VersionNotFoundError(f"版本不存在：{candidate}")
+            version_id = candidate
+        record.final_version_id = version_id
+        self.save(record)
+        return version_id
 
     def find_version(self, version_id: str) -> tuple[GameVersion, Path]:
         """跨任务查找版本，返回记录与 HTML 快照路径。"""
