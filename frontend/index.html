@@ -8,7 +8,7 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230d0f17'/%3E%3Crect x='2' y='2' width='6' height='6' fill='%237ee787'/%3E%3Crect x='8' y='8' width='6' height='6' fill='%2358a6ff'/%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="/style.css?v=20261024i" />
+    <link rel="stylesheet" href="/style.css?v=20261024l" />
   </head>
   <body>
     <header class="topbar">
@@ -31,13 +31,13 @@
           <option value="balanced">BALANCED</option>
           <option value="creative">CREATIVE</option>
         </select>
-        <input
+        <select
           id="source-version"
           class="source-input"
-          type="text"
-          placeholder="来源版本 ID（可选）"
-          title="填写历史版本 ID 可从该版本创建创新分支"
-        />
+          title="选择历史任务作为本次执行的来源版本，按时间降序"
+        >
+          <option value="">不使用来源版本</option>
+        </select>
         <button id="submit" type="submit">开始开发</button>
       </form>
 
@@ -149,7 +149,7 @@
     </footer>
 
     <script src="/office.js?v=20261024g"></script>
-    <script src="/app.js?v=20261024k"></script>
+    <script src="/app.js?v=20261024l"></script>
     <script src="/talent.js?v=20261024h"></script>
   </body>
 </html>

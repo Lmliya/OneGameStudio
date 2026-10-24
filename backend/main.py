@@ -270,6 +270,26 @@ async def create_task(
     return record
 
 
+@app.get("/api/tasks")
+def list_tasks() -> list[dict]:
+    """列出 output 下的全部任务，按更新时间降序，供选择来源版本。"""
+    items = []
+    for record in store.list_records():
+        versions = store.list_versions(record.task_id)
+        latest = versions[-1].version_id if versions else None
+        items.append(
+            {
+                "task_id": record.task_id,
+                "requirement": record.requirement,
+                "status": record.status,
+                "updated_at": record.updated_at,
+                "final_version_id": record.final_version_id,
+                "latest_version_id": latest,
+            }
+        )
+    return items
+
+
 @app.get("/api/tasks/{task_id}", response_model=TaskRecord)
 def get_task(task_id: str) -> TaskRecord:
     return _load_or_404(task_id)

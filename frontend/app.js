@@ -901,6 +901,41 @@ function renderMode(health) {
   el("source-version").disabled = readOnly;
 }
 
+async function loadSourceTasks() {
+  const select = el("source-version");
+  if (!select) return;
+  const previous = select.value;
+  try {
+    const tasks = await fetch("/api/tasks").then((response) => response.json());
+    const options = ['<option value="">不使用来源版本</option>'];
+    for (const task of Array.isArray(tasks) ? tasks : []) {
+      const versionId = task.final_version_id || task.latest_version_id;
+      const date = new Date(task.updated_at);
+      const stamp = Number.isNaN(date.getTime())
+        ? ""
+        : `${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+            date.getDate(),
+          ).padStart(
+            2,
+            "0",
+          )} ${String(date.getHours()).padStart(2, "0")}:${String(
+            date.getMinutes(),
+          ).padStart(2, "0")}`;
+      const name = (task.requirement || "").replace(/\s+/g, " ").slice(0, 10);
+      const label = `${task.task_id} · ${name} · ${stamp}`;
+      options.push(
+        versionId
+          ? `<option value="${esc(versionId)}">${esc(label)}</option>`
+          : `<option value="" disabled>${esc(label)}（无版本）</option>`,
+      );
+    }
+    select.innerHTML = options.join("");
+    if (previous) select.value = previous;
+  } catch (error) {
+    console.warn("来源任务列表读取失败", error);
+  }
+}
+
 async function loadDemoTask() {
   try {
     const demo = await fetch("/api/demo").then((r) => r.json());
@@ -934,6 +969,7 @@ async function boot() {
   state.mode = mode;
   state.mock = Boolean(health.mock_mode);
   renderMode(health);
+  await loadSourceTasks();
   setConn(
     mode === "demo"
       ? "Demo 模式"

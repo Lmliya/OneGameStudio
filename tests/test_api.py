@@ -57,6 +57,23 @@ def test_create_task_writes_task_json(client: TestClient, tmp_path: Path) -> Non
     assert "贪吃蛇" in task_file.read_text(encoding="utf-8")
 
 
+def test_list_tasks_sorted_by_updated_at(client: TestClient) -> None:
+    """来源任务列表读取 output 下所有任务，并按更新时间降序返回。"""
+    first = client.post("/api/tasks", json={"requirement": "第一个任务"}).json()
+    second = client.post("/api/tasks", json={"requirement": "第二个任务"}).json()
+
+    response = client.get("/api/tasks")
+
+    assert response.status_code == 200
+    items = response.json()
+    ids = [item["task_id"] for item in items]
+    assert first["task_id"] in ids
+    assert second["task_id"] in ids
+    stamps = [item["updated_at"] for item in items]
+    assert stamps == sorted(stamps, reverse=True)
+    assert items[0]["task_id"] == second["task_id"]
+
+
 def test_create_task_rejects_empty(client: TestClient) -> None:
     response = client.post("/api/tasks", json={"requirement": ""})
     assert response.status_code == 422
