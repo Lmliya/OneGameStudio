@@ -23,7 +23,7 @@ COPY demo ./demo
 RUN uv run playwright install --with-deps chromium
 
 ENV APP_MODE=demo \
-    DEMO_READ_ONLY=true \
+    DEMO_READ_ONLY=false \
     MOCK_MODE=true \
     OUTPUT_DIR=/data/output \
     EVOLUTION_DIR=/data/evolution \

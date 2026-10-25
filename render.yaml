@@ -2,14 +2,15 @@ services:
   - type: web
     name: onegamestudio-demo
     runtime: docker
-    # 免费层：无持久磁盘、15 分钟无流量休眠；只读 Demo 足够使用
+    # 免费层：无持久磁盘、15 分钟无流量休眠；Demo + Mock 可交互但不调用真实模型
     plan: free
     healthCheckPath: /api/health
     envVars:
       - key: APP_MODE
         value: demo
+      # 允许在线上提交任务；Mock 模式不会调用真实模型、不产生 token 费用
       - key: DEMO_READ_ONLY
-        value: "true"
+        value: "false"
       - key: MOCK_MODE
         value: "true"
       - key: OUTPUT_DIR
