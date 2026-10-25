@@ -308,7 +308,7 @@ def cancel_task(task_id: str) -> TaskRecord:
 @app.get("/api/tasks/{task_id}/artifacts")
 def get_artifacts(task_id: str) -> dict[str, str]:
     _load_or_404(task_id)
-    return store.list_artifacts(task_id)
+    return _store_for(task_id).list_artifacts(task_id)
 
 
 # 可读取的产物白名单；history/ 下只放行受控命名的快照
