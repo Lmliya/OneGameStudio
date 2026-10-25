@@ -18,10 +18,6 @@ services:
         value: /tmp/evolution
       - key: DEMO_DIR
         value: /app/demo/tasks
-      # Live 模式才需要；在 Render 控制台手动填写，不要写进仓库
-      - key: LLM_API_KEY
-        sync: false
-      - key: LLM_MODEL
-        sync: false
-      - key: ACCESS_TOKEN
-        sync: false
+      # Live 模式才需要，在 Render 控制台 Environment 页手动添加（不要写进仓库）：
+      #   LLM_API_KEY、LLM_MODEL、LLM_BASE_URL、ACCESS_TOKEN
+      # 同时把 APP_MODE 改为 live、MOCK_MODE 改为 false、DEMO_READ_ONLY 改为 false
