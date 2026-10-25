@@ -40,7 +40,8 @@
   --shadow: 4px 4px 0 rgba(69, 41, 26, 0.35);
   --shadow-small: 2px 2px 0 rgba(69, 41, 26, 0.35);
   --font-display: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-  --font-body: ui-monospace, Menlo, Consolas, "PingFang SC", "Microsoft YaHei",
+  --font-body:
+    ui-monospace, Menlo, Consolas, "PingFang SC", "Microsoft YaHei",
     "Noto Sans CJK SC", sans-serif;
   --font: var(--font-body);
 }
@@ -112,7 +113,11 @@ body {
   background: var(--wood-dark);
   background-image:
     linear-gradient(rgba(255, 248, 230, 0.1) 0 2px, transparent 2px),
-    repeating-linear-gradient(90deg, transparent 0 14px, rgba(58, 36, 22, 0.18) 14px 16px);
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 14px,
+      rgba(58, 36, 22, 0.18) 14px 16px
+    );
   border-bottom: 4px solid #3a2416;
   box-shadow:
     inset 0 -3px 0 var(--wood),
@@ -157,6 +162,28 @@ body {
   color: var(--ink);
   font-size: 10px;
   letter-spacing: 1px;
+}
+
+/* 顶栏中部的品牌横幅：位于标题块与状态徽章之间，高度与标题块一致，不超出深色顶栏 */
+.brand-banner {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+  padding: 0 8px;
+}
+
+.brand-banner img {
+  display: block;
+  height: 40px;
+  width: auto;
+  max-width: 100%;
+  object-fit: cover;
+  border: 2px solid #3a2416;
+  box-shadow: 2px 2px 0 rgba(42, 29, 20, 0.45);
+  image-rendering: -webkit-optimize-contrast;
 }
 
 .status-group {
@@ -421,7 +448,10 @@ body {
   gap: 10px;
   padding: 10px 12px 12px;
   background: var(--paper);
-  background-image: radial-gradient(rgba(125, 91, 63, 0.12) 1px, transparent 1px);
+  background-image: radial-gradient(
+    rgba(125, 91, 63, 0.12) 1px,
+    transparent 1px
+  );
   background-size: 8px 8px;
 }
 
@@ -510,7 +540,9 @@ button {
   font-weight: 800;
   letter-spacing: 1px;
   cursor: pointer;
-  transition: transform 60ms steps(1), background-color 60ms steps(1);
+  transition:
+    transform 60ms steps(1),
+    background-color 60ms steps(1);
 }
 
 button:hover:not(:disabled) {
@@ -569,7 +601,10 @@ button.ghost:active:not(:disabled) {
   gap: 5px;
   padding: 7px 8px 0;
   background: var(--surface-sunken);
-  background-image: linear-gradient(rgba(122, 74, 36, 0.12) 0 2px, transparent 2px);
+  background-image: linear-gradient(
+    rgba(122, 74, 36, 0.12) 0 2px,
+    transparent 2px
+  );
   border-bottom: 3px solid var(--frame);
   overflow-x: auto;
   scrollbar-width: thin;
@@ -1357,6 +1392,9 @@ ul.plain {
   .topbar {
     flex-wrap: wrap;
     padding: 8px 10px;
+  }
+  .brand-banner {
+    display: none;
   }
   .status-group {
     justify-content: flex-start;

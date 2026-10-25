@@ -8,7 +8,7 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%235a3a22'/%3E%3Crect x='1' y='1' width='14' height='14' fill='%23fff3d6'/%3E%3Crect x='3' y='3' width='5' height='5' fill='%23f2b134'/%3E%3Crect x='8' y='8' width='5' height='5' fill='%236fbf73'/%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="/style.css?v=20261025j" />
+    <link rel="stylesheet" href="/style.css?v=20261025k" />
   </head>
   <body>
     <header class="topbar">
@@ -17,6 +17,16 @@
         <span class="brand-name">OneGameStudio</span>
         <span class="ver">v0.10</span>
       </div>
+
+      <figure class="brand-banner" aria-hidden="true">
+        <img
+          src="/assets/studio-banner.jpg"
+          alt=""
+          width="640"
+          height="271"
+          decoding="async"
+        />
+      </figure>
 
       <div class="status-group" aria-label="公司状态">
         <span id="mode-badge" class="badge badge-wait" title="运行模式"
@@ -38,13 +48,34 @@
           </div>
           <div class="office-viewport">
             <div class="office-toolbar" aria-label="办公室视角控制">
-              <button id="office-zoom-out" type="button" class="ghost" aria-label="缩小办公室">−</button>
+              <button
+                id="office-zoom-out"
+                type="button"
+                class="ghost"
+                aria-label="缩小办公室"
+              >
+                −
+              </button>
               <output id="office-zoom" aria-live="polite">130%</output>
-              <button id="office-zoom-in" type="button" class="ghost" aria-label="放大办公室">+</button>
-              <button id="office-reset" type="button" class="ghost">复位视角</button>
+              <button
+                id="office-zoom-in"
+                type="button"
+                class="ghost"
+                aria-label="放大办公室"
+              >
+                +
+              </button>
+              <button id="office-reset" type="button" class="ghost">
+                复位视角
+              </button>
             </div>
             <div class="office-stage">
-              <canvas id="office" width="960" height="600" aria-label="可缩放和拖动的 2.5D 等距像素办公室"></canvas>
+              <canvas
+                id="office"
+                width="960"
+                height="600"
+                aria-label="可缩放和拖动的 2.5D 等距像素办公室"
+              ></canvas>
               <div
                 id="office-hotspots"
                 class="office-hotspots"
